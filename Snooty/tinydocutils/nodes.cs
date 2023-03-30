@@ -233,7 +233,7 @@ public class Reporter
 {
     public Func<int?, (string?, int)>? GetSourceAndLine;
 
-    public SystemMessage MakeSystemMesage(int level, string message, int? line = null)
+    public SystemMessage MakeSystemMesage(DiagnosticLevel level, string message, int? line = null)
     {
         return new SystemMessage();
     }
@@ -435,7 +435,7 @@ public class Document : Element
         {
             if (old_explicit)
             {
-                int level = 2;
+                DiagnosticLevel level = DiagnosticLevel.Warning;
                 if (old_id is not null)
                 {
                     var old_node = IdToElement[old_id];
@@ -448,10 +448,10 @@ public class Document : Element
                             && old_node.Attributes["refuri"] == refuri
                         )
                         {
-                            level = 1;  // just inform if refuri's identical
+                            level = DiagnosticLevel.Info;  // just inform if refuri's identical
                         }
                     }
-                    if (level > 1)
+                    if ((int)level > 1)
                     {
                         old_node.DupName(name);
                         NameIds[name] = null;

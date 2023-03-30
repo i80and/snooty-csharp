@@ -298,4 +298,40 @@ public sealed partial class Util
     public static int ColumnWidth(string text) {
         return new StringInfo(text).LengthInTextElements;
     }
+
+    [GeneratedRegex("""^(?:0x|x|\\x|U\+?|\\u)([0-9a-f]+)$|&#x([0-9a-f]+);$""", RegexOptions.IgnoreCase)]
+    private static partial Regex UNICODE_PATTERN();
+
+    [GeneratedRegex("""^[0-9]+$""", RegexOptions.IgnoreCase)]
+    private static partial Regex DIGITS();
+
+    public static string UnicodeCode(string code) {
+        // Convert a Unicode character code to a Unicode character.
+        // (Directive option conversion function.)
+
+        // Codes may be decimal numbers, hexadecimal numbers (prefixed by ``0x``,
+        // ``x``, ``\x``, ``U+``, ``u``, or ``\u``; e.g. ``U+262E``), or XML-style
+        // numeric character entities (e.g. ``&#x262E;``).  Other text remains as-is.
+
+        // Raise ArgumentException for illegal Unicode code values.
+
+        try {
+            if (DIGITS().IsMatch(code)) {  // decimal number
+                return ((Rune)Int32.Parse(code)).ToString();
+            } else {
+                var match = UNICODE_PATTERN().Match(code);
+                if (match.Success) {   // hex number
+                    var value = match.Groups[1].Value;
+                    if (value.Length == 0) {
+                        value = match.Groups[2].Value;
+                    }
+                    return ((Rune)(Int32.Parse(value, System.Globalization.NumberStyles.HexNumber))).ToString();
+                } else {  // other text
+                    throw new ArgumentException($"Unknown Unicode character '{code}'");
+                }
+            }
+        } catch (OverflowException detail) {
+            throw new ArgumentException($"code too large ({detail})");
+        }
+    }
 }

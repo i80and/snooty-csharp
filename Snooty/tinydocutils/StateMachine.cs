@@ -360,7 +360,7 @@ public sealed class StringList : IEnumerable<string>
     }
 }
 
-public record TransitionTuple(RegexWrapper Pattern, Func<Match, List<string>, IStateBuilder, TransitionResult> Method, IStateBuilder NextState);
+public record TransitionTuple(string Name, RegexWrapper Pattern, Func<Match, List<string>, IStateBuilder, TransitionResult> Method, IStateBuilder NextState);
 
 public interface IStateBuilder
 {
@@ -419,7 +419,7 @@ public class StateMachine
         _inputOffset = inputOffset;
         LineOffset = -1;
         _currentState = (initialState is not null) ? initialState : _initialState;
-        List<string>? transitions = null;
+        string? transitions = null;
         IStateBuilder nextState;
         var state = GetState();
 
@@ -448,7 +448,7 @@ public class StateMachine
             catch (TransitionCorrection correction)
             {
                 PreviousLine();
-                transitions = new List<string> { correction.Transition };
+                transitions = correction.Transition;
                 thrown = true;
                 continue;
             }
@@ -456,7 +456,7 @@ public class StateMachine
             {
                 PreviousLine();
                 nextState = correction.NewState;
-                transitions = (correction.Transition is null) ? null : new List<string> { correction.Transition };
+                transitions = (correction.Transition is null) ? null : correction.Transition;
                 thrown = true;
             }
 
@@ -610,16 +610,18 @@ public class StateMachine
         }
     }
 
-    private TransitionResult CheckLine(List<string> context, State state, IEnumerable<string>? transitions = null)
+    private TransitionResult CheckLine(List<string> context, State state, string? correctTransition = null)
     {
-        if (transitions is null)
+        IEnumerable<TransitionTuple> _t;
+        if (correctTransition is null)
         {
-            transitions = state.Transitions.Keys;
+            _t = state.Transitions;
+        } else {
+            _t = new List<TransitionTuple> { state.Transitions.Where(x => x.Name == correctTransition).First() };
         }
 
-        foreach (var name in transitions)
+        foreach (var transition in _t)
         {
-            var transition = state.Transitions[name];
             Debug.Assert(Line is not null);
             var match = transition.Pattern.RegexAnchoredAtStart.Match(Line);
             // Console.WriteLine("{0}, {1}, {2}", name, Line, match.Success);
@@ -774,7 +776,7 @@ public class State
     protected StateMachine _stateMachine;
     protected StateConfiguration? _stateConfig;
 
-    public Dictionary<string, TransitionTuple> Transitions { get; init; } = new Dictionary<string, TransitionTuple>();
+    public List<TransitionTuple> Transitions { get; init; } = new List<TransitionTuple>();
 
     public State(StateMachine sm)
     {

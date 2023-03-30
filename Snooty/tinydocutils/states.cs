@@ -984,9 +984,9 @@ public abstract class RSTState : tinydocutils.State
             BodyState.Builder.Instance
         );
 
-        Transitions = new Dictionary<string, TransitionTuple> {
-            { "blank", new TransitionTuple(BLANK_PAT, (match, context, nextState) => BlankTransition(match, context, nextState), GetStateBuilder()) },
-            { "indent", new TransitionTuple(INDENT_PAT, (match, context, nextState) => IndentTransition(match, context, nextState), GetStateBuilder()) }
+        Transitions = new List<TransitionTuple> {
+            new TransitionTuple("blank", BLANK_PAT, (match, context, nextState) => BlankTransition(match, context, nextState), GetStateBuilder()),
+            new TransitionTuple("indent", INDENT_PAT, (match, context, nextState) => IndentTransition(match, context, nextState), GetStateBuilder())
         };
     }
 
@@ -1018,7 +1018,7 @@ public abstract class RSTState : tinydocutils.State
         catch (EOFError) { }
     }
 
-    protected int NestedParse(
+    public int NestedParse(
         StringList block,
         int input_offset,
         Element node,
@@ -1456,7 +1456,7 @@ public class BodyState : RSTState
         );
     }
 
-    public List<(Func<Match, (List<Element>, bool)>, Regex)> Constructs { get; init; }
+    public List<(Func<Match, (List<Node>, bool)>, Regex)> Constructs { get; init; }
 
     private static readonly Regex PAT_FOOTNOTE = new Regex(
         $"""
@@ -1522,22 +1522,22 @@ public class BodyState : RSTState
             BodyState.Builder.Instance
         );
 
-        Transitions = new Dictionary<string, TransitionTuple> {
-            { "blank", new TransitionTuple(RSTState.BLANK_PAT, (match, context, nextState) => BlankTransition(match, context, nextState), GetStateBuilder())},
-            { "indent", new TransitionTuple(RSTState.INDENT_PAT, (match, context, nextState) => IndentTransition(match, context, nextState), GetStateBuilder())},
-            { "bullet", new TransitionTuple(Patterns.Bullet, (match, context, nextState) => BulletTransition(match, context, nextState), GetStateBuilder())},
-            { "enumerator", new TransitionTuple(Patterns.Enumerator, (match, context, nextState) => EnumeratorTransition(match, context, nextState), GetStateBuilder())},
-            { "field_marker", new TransitionTuple(Patterns.FieldMarker, (match, context, nextState) => FieldMarkerTransition(match, context, nextState), GetStateBuilder())},
-            { "option_marker", new TransitionTuple(Patterns.OptionMarker, (match, context, nextState) => OptionMarkerTransition(match, context, nextState), GetStateBuilder())},
-            { "doctest", new TransitionTuple(Patterns.Doctest, (match, context, nextState) => DoctestTransition(match, context, nextState), GetStateBuilder())},
-            { "line_block", new TransitionTuple(Patterns.LineBlock, (match, context, nextState) => LineBlockTransition(match, context, nextState), GetStateBuilder())},
-            { "explicit_markup", new TransitionTuple(Patterns.ExplicitMarkup, (match, context, nextState) => ExplicitMarkupTransition(match, context, nextState), GetStateBuilder())},
-            { "anonymous", new TransitionTuple(Patterns.Anonymous, (match, context, nextState) => AnonymousTransition(match, context, nextState), GetStateBuilder())},
-            { "line", new TransitionTuple(Patterns.Line, (match, context, nextState) => LineTransition(match, context, nextState), GetStateBuilder())},
-            { "text", new TransitionTuple(Patterns.Text, (match, context, nextState) => TextTransition(match, context, nextState), GetStateBuilder())},
+        Transitions = new List<TransitionTuple> {
+            new TransitionTuple("blank", RSTState.BLANK_PAT, (match, context, nextState) => BlankTransition(match, context, nextState), GetStateBuilder()),
+            new TransitionTuple("indent", RSTState.INDENT_PAT, (match, context, nextState) => IndentTransition(match, context, nextState), GetStateBuilder()),
+            new TransitionTuple("bullet", Patterns.Bullet, (match, context, nextState) => BulletTransition(match, context, nextState), GetStateBuilder()),
+            new TransitionTuple("enumerator", Patterns.Enumerator, (match, context, nextState) => EnumeratorTransition(match, context, nextState), GetStateBuilder()),
+            new TransitionTuple("field_marker", Patterns.FieldMarker, (match, context, nextState) => FieldMarkerTransition(match, context, nextState), GetStateBuilder()),
+            new TransitionTuple("option_marker", Patterns.OptionMarker, (match, context, nextState) => OptionMarkerTransition(match, context, nextState), GetStateBuilder()),
+            new TransitionTuple("doctest", Patterns.Doctest, (match, context, nextState) => DoctestTransition(match, context, nextState), GetStateBuilder()),
+            new TransitionTuple("line_block", Patterns.LineBlock, (match, context, nextState) => LineBlockTransition(match, context, nextState), GetStateBuilder()),
+            new TransitionTuple("explicit_markup", Patterns.ExplicitMarkup, (match, context, nextState) => ExplicitMarkupTransition(match, context, nextState), GetStateBuilder()),
+            new TransitionTuple("anonymous", Patterns.Anonymous, (match, context, nextState) => AnonymousTransition(match, context, nextState), GetStateBuilder()),
+            new TransitionTuple("line", Patterns.Line, (match, context, nextState) => LineTransition(match, context, nextState), GetStateBuilder()),
+            new TransitionTuple("text", Patterns.Text, (match, context, nextState) => TextTransition(match, context, nextState), GetStateBuilder()),
         };
 
-        Constructs = new List<(Func<Match, (List<Element>, bool)>, Regex)> {
+        Constructs = new List<(Func<Match, (List<Node>, bool)>, Regex)> {
             ((match) => HandleFootnote(match), PAT_FOOTNOTE),
             ((match) => HandleCitation(match), PAT_CITATION),
             ((match) => HandleHyperlinkTarget(match), PAT_HYPERLINK_TARGET),
@@ -2240,7 +2240,7 @@ public class BodyState : RSTState
         }
     }
 
-    private (List<Element>, bool) ExplicitConstruct(Match match)
+    private (List<Node>, bool) ExplicitConstruct(Match match)
     {
         // Determine which explicit construct this is, parse & return it.
         var errors = new List<SystemMessage>();
@@ -2267,14 +2267,14 @@ public class BodyState : RSTState
     }
 
 
-    private (List<Element>, bool) HandleComment(Match match)
+    private (List<Node>, bool) HandleComment(Match match)
     {
         if (
             match.Value[(match.Index + match.Length)..].Trim().Length == 0
             && _stateMachine!.IsNextLineBlank()
         )
         {  // an empty comment?
-            return (new List<Element> { new Comment() }, true);  // "A tiny but practical wart."
+            return (new List<Node> { new Comment() }, true);  // "A tiny but practical wart."
         }
         var (
             indented,
@@ -2287,7 +2287,7 @@ public class BodyState : RSTState
             indented.TrimEnd();
         }
         var text = String.Join('\n', indented);
-        return (new List<Element> { new Comment(text, text) }, blank_finish);
+        return (new List<Node> { new Comment(text, text) }, blank_finish);
     }
 
     private List<Option> ParseOptionMarker(Match match)
@@ -2448,7 +2448,7 @@ public class BodyState : RSTState
         }
     }
 
-    protected (List<Element>, bool) HandleFootnote(Match match)
+    protected (List<Node>, bool) HandleFootnote(Match match)
     {
         var (src, srcline) = _stateMachine.GetSourceAndLine();
         var (
@@ -2496,10 +2496,10 @@ public class BodyState : RSTState
         {
             NestedParse(indented, input_offset: offset, node: footnote);
         }
-        return (new List<Element> { footnote }, blank_finish);
+        return (new List<Node> { footnote }, blank_finish);
     }
 
-    protected (List<Element>, bool) HandleCitation(Match match)
+    protected (List<Node>, bool) HandleCitation(Match match)
     {
         var (src, srcline) = _stateMachine.GetSourceAndLine();
         var (
@@ -2521,10 +2521,10 @@ public class BodyState : RSTState
         {
             NestedParse(indented, input_offset: offset, node: citation);
         }
-        return (new List<Element> { citation }, blank_finish);
+        return (new List<Node> { citation }, blank_finish);
     }
 
-    protected (List<Element>, bool) HandleHyperlinkTarget(Match match)
+    protected (List<Node>, bool) HandleHyperlinkTarget(Match match)
     {
         var pattern = ExplicitInfo.PAT_TARGET;
 
@@ -2566,10 +2566,10 @@ public class BodyState : RSTState
         var target = MakeTarget(
             escaped_block, blocktext, lineno, targetmatch.Groups["name"].Value
         );
-        return (new List<Element> { target }, blank_finish);
+        return (new List<Node> { target }, blank_finish);
     }
 
-    protected (List<Element>, bool) HandleSubstitutionDef(Match match)
+    protected (List<Node>, bool) HandleSubstitutionDef(Match match)
     {
         var pattern = ExplicitInfo.PAT_SUBSTITUTION;
 
@@ -2623,7 +2623,7 @@ public class BodyState : RSTState
                 $"Substitution definition '{subname}' missing contents.",
                 line: srcline
             );
-            return (new List<Element> { msg }, blank_finish);
+            return (new List<Node> { msg }, blank_finish);
         }
         block[0] = block[0].Trim();
         substitution_node.Names.Add(Util.WhitespaceNormalizeName(subname));
@@ -2655,7 +2655,7 @@ public class BodyState : RSTState
                     $"Substitution definition contains illegal element {node}",
                     line: srcline
                 );
-                return (new List<Element> { msg }, blank_finish);
+                return (new List<Node> { msg }, blank_finish);
             }
         }
         if (substitution_node.Count == 0)
@@ -2664,10 +2664,10 @@ public class BodyState : RSTState
                 "Substitution definition '{subname}' empty or invalid.",
                 line: srcline
             );
-            return (new List<Element> { msg }, blank_finish);
+            return (new List<Node> { msg }, blank_finish);
         }
 
-        return (new List<Element> { substitution_node }, blank_finish);
+        return (new List<Node> { substitution_node }, blank_finish);
     }
 
     protected bool DisallowedInsideSubstitutionDefinitions(Element node)
@@ -2688,7 +2688,7 @@ public class BodyState : RSTState
         }
     }
 
-    protected (List<Element>, bool) HandleDirective(Match match)
+    protected (List<Node>, bool) HandleDirective(Match match)
     {
         // Returns a 2-tuple: list of nodes, and a "blank finish" boolean.
         var type_name = match.Groups[1].Value;
@@ -2704,7 +2704,7 @@ public class BodyState : RSTState
         }
     }
 
-    protected (List<Element>, bool) RunDirective(
+    protected (List<Node>, bool) RunDirective(
         IDirective directive,
         Match match,
         string type_name,
@@ -2761,11 +2761,11 @@ public class BodyState : RSTState
                 $"Error in '{type_name}' directive:\n{detail.Message}.",
                 line: lineno
             );
-            return (new List<Element> { error }, blank_finish);
+            return (new List<Node> { error }, blank_finish);
 
         }
 
-        var result = new List<Element>();
+        var result = new List<Node>();
 
         try
         {
@@ -2786,7 +2786,7 @@ public class BodyState : RSTState
                 error.Level, error.Message, line: lineno
             );
             msg_node.Add(new LiteralBlock(block_text, block_text));
-            result = new List<Element> { msg_node };
+            result = new List<Node> { msg_node };
         }
 
         return (result, blank_finish || _stateMachine.IsNextLineBlank());
@@ -2998,7 +2998,7 @@ public class BodyState : RSTState
         }
     }
 
-    protected (List<Element>, bool) UnknownDirective(string typeName)
+    protected (List<Node>, bool) UnknownDirective(string typeName)
     {
 
         var lineno = _stateMachine.AbsLineNumber();
@@ -3013,7 +3013,7 @@ public class BodyState : RSTState
             $"Unknown directive type '{typeName}'.",
             line: lineno
         );
-        return (new List<Element> { error }, blank_finish);
+        return (new List<Node> { error }, blank_finish);
     }
 
     protected override IStateBuilder GetStateBuilder()
@@ -3469,11 +3469,11 @@ public class SubstitutionDefState : BodyState, IHaveBlankFinish
     public bool BlankFinish { get; set; } = false;
 
     public SubstitutionDefState(StateMachine sm) : base(sm) {
-        Transitions = new Dictionary<string, TransitionTuple> {
-            { "blank", new TransitionTuple(SubstitutionDefState.BLANK_PAT, (match, context, nextState) => BlankTransition(match, context, nextState), GetStateBuilder())},
-            { "indent", new TransitionTuple(SubstitutionDefState.INDENT_PAT, (match, context, nextState) => IndentTransition(match, context, nextState), GetStateBuilder())},
-            { "embedded_directive", new TransitionTuple(SubstitutionDefState.EMBEDDED_DIRECTIVE_PAT, (match, context, nextState) => EmbeddedDirectiveTransition(match, context, nextState), GetStateBuilder())},
-            { "text", new TransitionTuple(SubstitutionDefState.TEXT_PAT, (match, context, nextState) => TextTransition(match, context, nextState), GetStateBuilder())},
+        Transitions = new List<TransitionTuple> {
+            new TransitionTuple("blank", SubstitutionDefState.BLANK_PAT, (match, context, nextState) => BlankTransition(match, context, nextState), GetStateBuilder()),
+            new TransitionTuple("indent", SubstitutionDefState.INDENT_PAT, (match, context, nextState) => IndentTransition(match, context, nextState), GetStateBuilder()),
+            new TransitionTuple("embedded_directive", SubstitutionDefState.EMBEDDED_DIRECTIVE_PAT, (match, context, nextState) => EmbeddedDirectiveTransition(match, context, nextState), GetStateBuilder()),
+            new TransitionTuple("text", SubstitutionDefState.TEXT_PAT, (match, context, nextState) => TextTransition(match, context, nextState), GetStateBuilder())
         };
     }
 
@@ -3526,11 +3526,11 @@ public class TextState : RSTState
     public static readonly RegexWrapper TEXT_PAT = new RegexWrapper("");
 
     public TextState(StateMachine sm) : base(sm) {
-        Transitions = new Dictionary<string, TransitionTuple> {
-            { "blank", new TransitionTuple(TextState.BLANK_PAT, (match, context, nextState) => BlankTransition(match, context, nextState), GetStateBuilder())},
-            { "indent", new TransitionTuple(TextState.INDENT_PAT, (match, context, nextState) => IndentTransition(match, context, nextState), GetStateBuilder())},
-            { "underline", new TransitionTuple(TextState.UNDERLINE_PAT, (match, context, nextState) => UnderlineTransition(match, context, nextState), BodyState.Builder.Instance)},
-            { "text", new TransitionTuple(TextState.TEXT_PAT, (match, context, nextState) => TextTransition(match, context, nextState), BodyState.Builder.Instance)},
+        Transitions = new List<TransitionTuple>{
+            new TransitionTuple("blank", TextState.BLANK_PAT, (match, context, nextState) => BlankTransition(match, context, nextState), GetStateBuilder()),
+            new TransitionTuple("indent", TextState.INDENT_PAT, (match, context, nextState) => IndentTransition(match, context, nextState), GetStateBuilder()),
+            new TransitionTuple("underline", TextState.UNDERLINE_PAT, (match, context, nextState) => UnderlineTransition(match, context, nextState), BodyState.Builder.Instance),
+            new TransitionTuple("text", TextState.TEXT_PAT, (match, context, nextState) => TextTransition(match, context, nextState), BodyState.Builder.Instance),
         };
     }
 
@@ -3756,11 +3756,11 @@ public class TextState : RSTState
 public class SpecializedTextState : TextState
 {
     public SpecializedTextState(StateMachine sm) : base(sm) {
-        Transitions = new Dictionary<string, TransitionTuple> {
-            { "blank", new TransitionTuple(BLANK_PAT, (match, context, nextState) => BlankTransition(match, context, nextState), GetStateBuilder()) },
-            { "indent", new TransitionTuple(INDENT_PAT, (match, context, nextState) => IndentTransition(match, context, nextState), GetStateBuilder()) },
-            { "underline", new TransitionTuple(INDENT_PAT, (match, context, nextState) => UnderlineTransition(match, context, nextState), BodyState.Builder.Instance) },
-            { "text", new TransitionTuple(INDENT_PAT, (match, context, nextState) => TextTransition(match, context, nextState), BodyState.Builder.Instance) }
+        Transitions = new List<TransitionTuple>{
+            new TransitionTuple("blank", BLANK_PAT, (match, context, nextState) => BlankTransition(match, context, nextState), GetStateBuilder()),
+            new TransitionTuple("indent", INDENT_PAT, (match, context, nextState) => IndentTransition(match, context, nextState), GetStateBuilder()),
+            new TransitionTuple("underline", INDENT_PAT, (match, context, nextState) => UnderlineTransition(match, context, nextState), BodyState.Builder.Instance),
+            new TransitionTuple("text", INDENT_PAT, (match, context, nextState) => TextTransition(match, context, nextState), BodyState.Builder.Instance),
         };
     }
 
@@ -3836,11 +3836,11 @@ public class DefinitionState : SpecializedTextState, IHaveBlankFinish
     public bool BlankFinish { get; set; } = false;
 
     public DefinitionState(StateMachine sm) : base(sm) {
-        Transitions = new Dictionary<string, TransitionTuple> {
-            { "blank", new TransitionTuple(BLANK_PAT, (match, context, nextState) => BlankTransition(match, context, nextState), GetStateBuilder()) },
-            { "indent", new TransitionTuple(INDENT_PAT, (match, context, nextState) => IndentTransition(match, context, nextState), GetStateBuilder()) },
-            { "underline", new TransitionTuple(INDENT_PAT, (match, context, nextState) => UnderlineTransition(match, context, nextState), BodyState.Builder.Instance) },
-            { "text", new TransitionTuple(INDENT_PAT, (match, context, nextState) => TextTransition(match, context, nextState), BodyState.Builder.Instance) }
+        Transitions = new List<TransitionTuple>{
+            new TransitionTuple("blank", BLANK_PAT, (match, context, nextState) => BlankTransition(match, context, nextState), GetStateBuilder()),
+            new TransitionTuple("indent", INDENT_PAT, (match, context, nextState) => IndentTransition(match, context, nextState), GetStateBuilder()),
+            new TransitionTuple("underline", INDENT_PAT, (match, context, nextState) => UnderlineTransition(match, context, nextState), BodyState.Builder.Instance),
+            new TransitionTuple("text", INDENT_PAT, (match, context, nextState) => TextTransition(match, context, nextState), BodyState.Builder.Instance),
         };
     }
 
@@ -3884,11 +3884,11 @@ public class LineState : SpecializedTextState
     private bool _eofcheck = true;  // @@@ ???
 
     public LineState(StateMachine sm) : base(sm) {
-        Transitions = new Dictionary<string, TransitionTuple> {
-            { "blank", new TransitionTuple(BLANK_PAT, (match, context, nextState) => BlankTransition(match, context, nextState), GetStateBuilder()) },
-            { "indent", new TransitionTuple(INDENT_PAT, (match, context, nextState) => IndentTransition(match, context, nextState), GetStateBuilder()) },
-            { "underline", new TransitionTuple(UNDERLINE_PAT, (match, context, nextState) => UnderlineTransition(match, context, nextState), BodyState.Builder.Instance) },
-            { "text", new TransitionTuple(TEXT_PAT, (match, context, nextState) => TextTransition(match, context, nextState), BodyState.Builder.Instance) }
+        Transitions = new List<TransitionTuple>{
+            new TransitionTuple("blank", BLANK_PAT, (match, context, nextState) => BlankTransition(match, context, nextState), GetStateBuilder()),
+            new TransitionTuple("indent", INDENT_PAT, (match, context, nextState) => IndentTransition(match, context, nextState), GetStateBuilder()),
+            new TransitionTuple("underline", UNDERLINE_PAT, (match, context, nextState) => UnderlineTransition(match, context, nextState), BodyState.Builder.Instance),
+            new TransitionTuple("text", TEXT_PAT, (match, context, nextState) => TextTransition(match, context, nextState), BodyState.Builder.Instance),
         };
     }
 
@@ -3962,7 +3962,7 @@ public class LineState : SpecializedTextState
         var source = $"{overline}\n{title}\n{underline}";
         overline = overline.TrimEnd();
         underline = underline.TrimEnd();
-        var underlineMatch = Transitions["underline"].Pattern.RegexAnchoredAtStart.Match(underline);
+        var underlineMatch = Transitions.Where(x => x.Name == "underline").First().Pattern.RegexAnchoredAtStart.Match(underline);
         // if not self.transitions["underline"][0].match(underline):
         if (!underlineMatch.Success || underlineMatch.Index > 0) {
             var blocktext = overline + "\n" + title + "\n" + underline;
