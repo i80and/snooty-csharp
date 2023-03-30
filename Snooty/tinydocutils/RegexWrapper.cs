@@ -21,11 +21,7 @@ public sealed class RegexWrapper {
                 return Regex;
             }
 
-            try {
-                _regexAnchoredAtStart = new Regex("^" + PatternText, Options | RegexOptions.Compiled | RegexOptions.NonBacktracking);
-            } catch (NotSupportedException) {
-                _regexAnchoredAtStart = new Regex("^" + PatternText, Options | RegexOptions.Compiled);
-            }
+            _regexAnchoredAtStart = new Regex("^" + PatternText, Options | RegexOptions.Compiled);
             return _regexAnchoredAtStart;
         }
     }
@@ -36,11 +32,6 @@ public sealed class RegexWrapper {
                 return _regex;
             }
 
-            try {
-                _regex = new Regex("^" + PatternText, Options | RegexOptions.Compiled | RegexOptions.NonBacktracking);
-            } catch (NotSupportedException) {
-                _regex = new Regex("^" + PatternText, Options | RegexOptions.Compiled);
-            }
             _regex = new Regex(PatternText, Options | RegexOptions.Compiled);
             return _regex;
         }

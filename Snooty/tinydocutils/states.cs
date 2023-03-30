@@ -1037,13 +1037,9 @@ public abstract class RSTState : tinydocutils.State
         var block_length = block.Count;
 
         RSTStateMachine? state_machine = null;
-        if (use_default == 1)
+        if (use_default == 1 && _nestedSMCache.Count > 0)
         {
-            try
-            {
-                state_machine = _nestedSMCache.Pop();
-            }
-            catch (InvalidOperationException) { }
+            state_machine = _nestedSMCache.Pop();
         }
         if (state_machine is null)
         {
@@ -1460,7 +1456,64 @@ public class BodyState : RSTState
         );
     }
 
-    public List<(Func<Match, (List<Element>, bool)>, RegexWrapper)> Constructs { get; init; }
+    public List<(Func<Match, (List<Element>, bool)>, Regex)> Constructs { get; init; }
+
+    private static readonly Regex PAT_FOOTNOTE = new Regex(
+        $"""
+            ^\.\.[ ]+                                      (?# explicit markup start)
+            \[
+            (                                             (?# footnote label:)
+                [0-9]+                                      (?# manually numbered footnote)
+            |                                           (?# *OR*)
+                \#                                          (?# anonymous auto-numbered footnote)
+            |                                           (?# *OR*)
+                \#{Inliner.PatternRegistry.simplename}      (?# auto-number ed? footnote label)
+            |                                           (?# *OR*)
+                \*                                        (?# auto-symbol footnote)
+            )
+            \]
+            ([ ]+|$)                                      (?# whitespace or end of line)
+            """,
+        RegexOptions.IgnorePatternWhitespace | RegexOptions.Compiled
+    );
+
+    private static readonly Regex PAT_CITATION = new Regex(
+        $"""
+            ^\.\.[ ]+          (?# explicit markup start)
+            \[({Inliner.PatternRegistry.simplename})\]          (?# citation label)
+            ([ ]+|$)          (?# whitespace or end of line)
+            """,
+        RegexOptions.IgnorePatternWhitespace | RegexOptions.Compiled
+    );
+
+    private static readonly Regex PAT_HYPERLINK_TARGET = new Regex(
+        """
+            ^\.\.[ ]+          (?# explicit markup start)
+            _                 (?# target indicator)
+            (?![ ]|$)         (?# first char. not space or EOL)
+            """,
+        RegexOptions.IgnorePatternWhitespace | RegexOptions.Compiled
+    );
+
+    private static readonly Regex PAT_SUBSTITUTION_DEF = new Regex(
+        """
+            ^\.\.[ ]+          (?# explicit markup start)
+            \|                (?# substitution indicator)
+            (?![ ]|$)         (?# first char. not space or EOL)
+            """,
+        RegexOptions.IgnorePatternWhitespace | RegexOptions.Compiled
+    );
+
+    private static readonly Regex PAT_DIRECTIVE = new Regex(
+        $"""
+            ^\.\.[ ]+                                  (?# explicit markup start)
+            ({Inliner.PatternRegistry.simplename})    (?# directive name)
+            [ ]?                                      (?# optional space)
+            ::                                        (?# directive delimiter)
+            ([ ]+|$)                                  (?# whitespace or end of line)
+            """,
+        RegexOptions.IgnorePatternWhitespace | RegexOptions.Compiled
+    );
 
     public BodyState(StateMachine sm) : base(sm)
     {
@@ -1484,74 +1537,12 @@ public class BodyState : RSTState
             { "text", new TransitionTuple(Patterns.Text, (match, context, nextState) => TextTransition(match, context, nextState), GetStateBuilder())},
         };
 
-        Constructs = new List<(Func<Match, (List<Element>, bool)>, RegexWrapper)> {
-            (
-                (match) => HandleFootnote(match),
-                new RegexWrapper(
-                    $"""
-                      \.\.[ ]+                                      (?# explicit markup start)
-                      \[
-                      (                                             (?# footnote label:)
-                          [0-9]+                                      (?# manually numbered footnote)
-                        |                                           (?# *OR*)
-                          \#                                          (?# anonymous auto-numbered footnote)
-                        |                                           (?# *OR*)
-                          \#{Inliner.PatternRegistry.simplename}      (?# auto-number ed? footnote label)
-                        |                                           (?# *OR*)
-                          \*                                        (?# auto-symbol footnote)
-                      )
-                      \]
-                      ([ ]+|$)                                      (?# whitespace or end of line)
-                      """,
-                    RegexOptions.IgnorePatternWhitespace
-                )
-            ),
-            (
-                (match) => HandleCitation(match),
-                new RegexWrapper(
-                    $"""
-                      \.\.[ ]+          (?# explicit markup start)
-                      \[({Inliner.PatternRegistry.simplename})\]          (?# citation label)
-                      ([ ]+|$)          (?# whitespace or end of line)
-                      """,
-                    RegexOptions.IgnorePatternWhitespace
-                )
-            ),
-            (
-                (match) => HandleHyperlinkTarget(match),
-                new RegexWrapper(
-                    """
-                      \.\.[ ]+          (?# explicit markup start)
-                      _                 (?# target indicator)
-                      (?![ ]|$)         (?# first char. not space or EOL)
-                      """,
-                    RegexOptions.IgnorePatternWhitespace
-                )
-            ),
-            (
-                (match) => HandleSubstitutionDef(match),
-                new RegexWrapper(
-                    """
-                      \.\.[ ]+          (?# explicit markup start)
-                      \|                (?# substitution indicator)
-                      (?![ ]|$)         (?# first char. not space or EOL)
-                      """,
-                    RegexOptions.IgnorePatternWhitespace
-                )
-            ),
-            (
-                (match) => HandleDirective(match),
-                new RegexWrapper(
-                    $"""
-                      \.\.[ ]+                                  (?# explicit markup start)
-                      ({Inliner.PatternRegistry.simplename})    (?# directive name)
-                      [ ]?                                      (?# optional space)
-                      ::                                        (?# directive delimiter)
-                      ([ ]+|$)                                  (?# whitespace or end of line)
-                      """,
-                    RegexOptions.IgnorePatternWhitespace
-                )
-            )
+        Constructs = new List<(Func<Match, (List<Element>, bool)>, Regex)> {
+            ((match) => HandleFootnote(match), PAT_FOOTNOTE),
+            ((match) => HandleCitation(match), PAT_CITATION),
+            ((match) => HandleHyperlinkTarget(match), PAT_HYPERLINK_TARGET),
+            ((match) => HandleSubstitutionDef(match), PAT_SUBSTITUTION_DEF),
+            ((match) => HandleDirective(match), PAT_DIRECTIVE)
         };
     }
 
@@ -2255,7 +2246,7 @@ public class BodyState : RSTState
         var errors = new List<SystemMessage>();
         foreach (var (method, pattern) in Constructs)
         {
-            var expmatch = pattern.RegexAnchoredAtStart.Match(match.Value);
+            var expmatch = pattern.Match(match.Value);
             if (expmatch.Success)
             {
                 try

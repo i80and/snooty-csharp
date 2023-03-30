@@ -4,9 +4,10 @@ using System.Text.RegularExpressions;
 using System.Globalization;
 using System.Text;
 
-public sealed class Util
+public sealed partial class Util
 {
-    private static readonly Regex DEFAULT_WHITESPACE_PAT = new Regex("[\v\f]", RegexOptions.Compiled | RegexOptions.NonBacktracking);
+    [GeneratedRegex("[\v\f]", RegexOptions.NonBacktracking)]
+    private static partial Regex DEFAULT_WHITESPACE_PAT();
     private static readonly string[] SEP_SEQUENCES = new string[] { "\x00 ", "\x00\n", "\x00" };
 
     public static List<string> String2Lines(
@@ -20,7 +21,7 @@ public sealed class Util
         {
             if (whitespace is null)
             {
-                whitespace = DEFAULT_WHITESPACE_PAT;
+                whitespace = DEFAULT_WHITESPACE_PAT();
             }
             astring = whitespace.Replace(astring, " ");
         }
@@ -160,14 +161,16 @@ public sealed class Util
         // get rid of non-ascii characters.
         id = id.Normalize(System.Text.NormalizationForm.FormKD);
         // shrink runs of whitespace and replace by hyphen
-        id = _non_id_chars.Replace(String.Join(' ', id.Split()), "-");
-        id = _non_id_at_ends.Replace(id, "");
+        id = _non_id_chars().Replace(String.Join(' ', id.Split()), "-");
+        id = _non_id_at_ends().Replace(id, "");
         return id;
     }
 
 
-    private static readonly Regex _non_id_chars = new Regex("[^a-z0-9]+", RegexOptions.Compiled);
-    private static readonly Regex _non_id_at_ends = new Regex("^[-0-9]+|-+$", RegexOptions.Compiled);
+    [GeneratedRegex("[^a-z0-9]+", RegexOptions.NonBacktracking)]
+    private static partial Regex _non_id_chars();
+    [GeneratedRegex("^[-0-9]+|-+$", RegexOptions.NonBacktracking)]
+    private static partial Regex _non_id_at_ends();
 
     public static Dictionary<string, object> ExtractExtensionOptions(
         FieldList field_list,

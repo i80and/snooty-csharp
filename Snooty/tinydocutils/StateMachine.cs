@@ -128,21 +128,18 @@ public sealed class StringList : IEnumerable<string>
 
     public (string?, int?) Info(int i)
     {
-        try
-        {
-            return Items[i];
-        }
-        catch (ArgumentOutOfRangeException err)
-        {
+        if (i < 0 || i >= Items.Count) {
             if (i == Data.Count)
             {
                 return (Items[i - 1].Item1, null);
             }
             else
             {
-                throw err;
+                throw new ArgumentOutOfRangeException($"{i} is out of range: {Items.Count}");
             }
         }
+
+        return Items[i];
     }
 
     public void Disconnect()
@@ -503,17 +500,14 @@ public class StateMachine
     {
         try
         {
-            try
-            {
-                LineOffset += n;
-                Line = InputLines![LineOffset];
-            }
-            catch (ArgumentOutOfRangeException)
-            {
+            LineOffset += n;
+            if (LineOffset < 0 || LineOffset >= InputLines!.Count) {
                 Line = null;
                 throw new EOFError();
+            } else {
+                Line = InputLines![LineOffset];
+                return Line;
             }
-            return Line;
         }
         finally
         {
