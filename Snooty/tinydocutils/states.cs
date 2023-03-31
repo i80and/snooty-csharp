@@ -3177,7 +3177,7 @@ public class BulletListState : SpecializedBodyState, IHaveBlankFinish
         IStateBuilder nextState
     ) {
         // Bullet list item.
-        if (match.Value[0] != (char)_parent!.Attributes["bullet"]) {
+        if (match.Value[0] != ((string)_parent!.Attributes["bullet"])[0]) {
             // different bullet: new list
             InvalidInput(match, context, nextState);
         }

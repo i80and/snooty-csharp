@@ -231,9 +231,10 @@ public sealed class StringList : IEnumerable<string>
         // Trim `length` characters off the beginning of each item, in-place,
         // from index `start` to `end`.  No whitespace-checking is done on the
         // trimmed text.  Does not affect slice parent.
+        end = Math.Min(end, Data.Count);
         for (int i = start; i < end; i += 1)
         {
-            Data[i] = Data[i][length..];
+            Data[i] = Data[i][Math.Min(length, Data[i].Length)..];
         }
     }
 

@@ -25,4 +25,31 @@ public class UnitTest1
             tinydocutils.Util.UnicodeCode("");
         });
     }
+
+    [Fact]
+    public void Parser_Parse() {
+        var document = tinydocutils.Document.New("foo.rst", new tinydocutils.OptionParser());
+        var parser = new tinydocutils.Parser();
+        parser.Parse(
+        """
+        :template: product-landing
+        :hidefeedback: header
+        :noprevnext:
+
+        ================
+        What is MongoDB?
+        ================
+
+        .. |arrow| unicode:: U+27A4
+
+        This is a test. |arrow| Use the **Select your language** drop-down menu in the list.
+
+        * - Introduction
+
+            An introduction to things.
+          - Developers
+          - Administrators
+          - Reference
+        """, document);
+    }
 }
