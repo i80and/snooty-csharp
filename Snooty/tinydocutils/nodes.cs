@@ -1,6 +1,7 @@
 namespace tinydocutils;
 
 using System.Collections;
+using System.Text;
 
 public interface INodeVisitor
 {
@@ -135,6 +136,12 @@ public class Text : Node
     {
         return Util.Unescape(Value);
     }
+
+    public override string ToString()
+    {
+        var className = this.GetType().Name;
+        return $"<{className}>{AsText()}</{className}>";
+    }
 }
 
 public class Element : Node, IEnumerable<Node>
@@ -227,6 +234,20 @@ public class Element : Node, IEnumerable<Node>
     {
         return String.Join(ChildTextSeperator, Children.Select(child => child.AsText()));
     }
+
+    public override string ToString()
+    {
+        var className = this.GetType().Name;
+        var sb = new StringBuilder($"<{className}>");
+
+        foreach (var child in Children)
+        {
+            sb.Append(child.ToString());
+        }
+
+        sb.Append($"</{className}>");
+        return sb.ToString();
+    }
 }
 
 public class Reporter
@@ -263,7 +284,13 @@ public class TextElement : Element
 {
     public override string ChildTextSeperator { get { return ""; } }
 
-    public TextElement(string rawsource = "", string text = "") : base(rawsource) { }
+    public TextElement(string rawsource = "", string text = "") : base(rawsource)
+    {
+        if (text != "")
+        {
+            Add(new Text(text));
+        }
+    }
 }
 
 public class FixedTextElement : TextElement
@@ -629,7 +656,8 @@ public class Document : Element
         node.Attributes["refname"] = Util.WhitespaceNormalizeName(refname);
     }
 
-    public static Document New(string sourcePath, OptionParser settings) {
+    public static Document New(string sourcePath, OptionParser settings)
+    {
         // Return a new empty document object.
 
         // :Parameters:
@@ -660,7 +688,8 @@ public class Document : Element
 // Title ELements //
 ////////////////////
 
-public class Title : TextElement, ITitular, IPreBibliographic {
+public class Title : TextElement, ITitular, IPreBibliographic
+{
     public Title(string rawsource, string text) : base(rawsource, text) { }
 }
 
@@ -670,7 +699,8 @@ public class Title : TextElement, ITitular, IPreBibliographic {
 
 public class Section : Element, IStructural { }
 
-public class Transition : Element, IStructural {
+public class Transition : Element, IStructural
+{
     public Transition(string rawsource) : base(rawsource) { }
 }
 
@@ -694,25 +724,32 @@ public class ListItem : Element
 
 public class DefinitionList : Element { }
 
-public class DefinitionListItem : Element {
-    public DefinitionListItem(string rawsource): base(rawsource) { }
+public class DefinitionListItem : Element
+{
+    public DefinitionListItem(string rawsource) : base(rawsource) { }
 }
 
-public class Term : TextElement {
+public class Term : TextElement
+{
     public Term(string rawsource) : base(rawsource) { }
 }
 
-public class Classifier : TextElement { }
+public class Classifier : TextElement
+{
+    public Classifier(string rawsource, string text) : base(rawsource, text) { }
+}
 
-public class Definition : Element {
-    public Definition(string rawsource): base(rawsource) { }
+public class Definition : Element
+{
+    public Definition(string rawsource) : base(rawsource) { }
 }
 
 public class FieldList : Element { }
 
 public class Field : Element { }
 
-public class FieldName : TextElement {
+public class FieldName : TextElement
+{
     public FieldName(string rawsource, string text) : base(rawsource, text) { }
 }
 
@@ -889,7 +926,7 @@ public class Emphasis : TextElement, IInline
 {
     public static readonly Func<string, string, Emphasis> Make = (rawsource, text) => new Emphasis(rawsource, text);
 
-    public Emphasis(string rawsource, string text) : base(rawsource) { }
+    public Emphasis(string rawsource, string text) : base(rawsource, text) { }
 }
 
 
@@ -897,7 +934,7 @@ public class Strong : TextElement, IInline
 {
     public static readonly Func<string, string, Strong> Make = (rawsource, text) => new Strong(rawsource, text);
 
-    public Strong(string rawsource, string text) : base(rawsource) { }
+    public Strong(string rawsource, string text) : base(rawsource, text) { }
 }
 
 
@@ -905,7 +942,7 @@ public class Literal : TextElement, IInline
 {
     public static readonly Func<string, string, Literal> Make = (rawsource, text) => new Literal(rawsource, text);
 
-    public Literal(string rawsource, string text) : base(rawsource) { }
+    public Literal(string rawsource, string text) : base(rawsource, text) { }
 }
 
 
@@ -931,5 +968,5 @@ public class SubstitutionReference : TextElement, IInline
 {
     public static readonly Func<string, string, SubstitutionReference> Make = (rawsource, text) => new SubstitutionReference(rawsource, text);
 
-    public SubstitutionReference(string rawsource, string text) : base(rawsource) { }
+    public SubstitutionReference(string rawsource, string text) : base(rawsource, text) { }
 }

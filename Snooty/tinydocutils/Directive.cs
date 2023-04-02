@@ -4,7 +4,8 @@ using System.Diagnostics;
 using System.Text.RegularExpressions;
 using System.Text;
 
-public enum DiagnosticLevel {
+public enum DiagnosticLevel
+{
     Debug = 0,
     Info = 1,
     Warning = 2,
@@ -21,8 +22,10 @@ public class DirectiveError : Exception
         Level = level;
     }
 
-    public static void AssertHasContent(string name, StringList content) {
-        if (content.Count == 0) {
+    public static void AssertHasContent(string name, StringList content)
+    {
+        if (content.Count == 0)
+        {
             throw new DirectiveError(
                 DiagnosticLevel.Error,
                 $"Content block expected for the '{name}' directive; none found."
@@ -62,7 +65,8 @@ public interface IDirective
 }
 
 
-public class ReplaceDirective : IDirective {
+public class ReplaceDirective : IDirective
+{
     public int RequiredArguments { get => 0; }
     public int OptionalArguments { get => 0; }
     public bool FinalArgumentWhitespace { get => false; }
@@ -79,8 +83,10 @@ public class ReplaceDirective : IDirective {
             string block_text,
             RSTState state,
             RSTStateMachine state_machine
-        ) {
-        if (state is not SubstitutionDefState) {
+        )
+    {
+        if (state is not SubstitutionDefState)
+        {
             throw new DirectiveError(
                 DiagnosticLevel.Error,
                 $"Invalid context: the '{name}' directive can only be used within " +
@@ -96,12 +102,18 @@ public class ReplaceDirective : IDirective {
         // element might contain [paragraph] + system_message(s)
         Element? node = null;
         var messages = new List<Node>();
-        foreach (var elem in element) {
-            if (node is null && elem is Paragraph parNode) {
+        foreach (var elem in element)
+        {
+            if (node is null && elem is Paragraph parNode)
+            {
                 node = parNode;
-            } else if (elem is SystemMessage sysMessage) {
+            }
+            else if (elem is SystemMessage sysMessage)
+            {
                 messages.Add(sysMessage);
-            } else {
+            }
+            else
+            {
                 throw new DirectiveError(
                     DiagnosticLevel.Error,
                     "Error in '{name}' directive: may contain a single paragraph " +
@@ -109,14 +121,16 @@ public class ReplaceDirective : IDirective {
                 );
             }
         }
-        if (node is not null) {
+        if (node is not null)
+        {
             return messages.Concat(node.Children).ToList();
         }
         return messages;
     }
 }
 
-public partial class UnicodeDirective : IDirective {
+public partial class UnicodeDirective : IDirective
+{
     // Convert Unicode character codes (numbers) to characters.  Codes may be
     // decimal numbers, hexadecimal numbers (prefixed by ``0x``, ``x``, ``\x``,
     // ``U+``, ``u``, or ``\u``; e.g. ``U+262E``), or XML-style numeric character
@@ -145,8 +159,10 @@ public partial class UnicodeDirective : IDirective {
             string block_text,
             RSTState state,
             RSTStateMachine state_machine
-        ) {
-        if (state is not SubstitutionDefState) {
+        )
+    {
+        if (state is not SubstitutionDefState)
+        {
             throw new DirectiveError(
                 DiagnosticLevel.Error,
                 $"Invalid context: the '{name}' directive can only be used within " +
@@ -156,23 +172,30 @@ public partial class UnicodeDirective : IDirective {
 
         var substitution_definition = state_machine.Node!;
         Debug.Assert(substitution_definition is not null);
-        if (options.ContainsKey("trim")) {
+        if (options.ContainsKey("trim"))
+        {
             substitution_definition.Attributes["ltrim"] = true;
             substitution_definition.Attributes["rtrim"] = true;
         }
-        if (options.ContainsKey("ltrim")) {
+        if (options.ContainsKey("ltrim"))
+        {
             substitution_definition.Attributes["ltrim"] = true;
         }
-        if (options.ContainsKey("rtrim")) {
+        if (options.ContainsKey("rtrim"))
+        {
             substitution_definition.Attributes["rtrim"] = true;
         }
         var codes = COMMENT_PATTERN().Split(arguments[0])[0].Split();
         var element = new Element();
-        foreach (var code in codes) {
-            try {
+        foreach (var code in codes)
+        {
+            try
+            {
                 var decoded = Util.UnicodeCode(code);
                 element.Add(new Text(decoded));
-            } catch (ArgumentException error) {
+            }
+            catch (ArgumentException error)
+            {
                 throw new DirectiveError(DiagnosticLevel.Error, $"Invalid character code: {code}\n{error.Message}");
             }
         }

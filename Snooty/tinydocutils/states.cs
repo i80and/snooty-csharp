@@ -6,8 +6,10 @@ using System.Collections.Generic;
 
 public record StyleKind(string Underline, string? Overline)
 {
-    public int Count {
-        get {
+    public int Count
+    {
+        get
+        {
             return (Overline is null) ? 1 : 2;
         }
     }
@@ -130,8 +132,8 @@ public class Inliner
             }
             else
             {
-                start_string_prefix = $"""(^|(?<=\\s|[{PunctuationChars.openers}{PunctuationChars.delimiters}]))""";
-                end_string_suffix = $"""($|(?=\\s|[\x00{PunctuationChars.closing_delimiters}{PunctuationChars.delimiters}{PunctuationChars.closers}]))""";
+                start_string_prefix = $"""(^|(?<=\s|[{PunctuationChars.openers}{PunctuationChars.delimiters}]))""";
+                end_string_suffix = $"""($|(?=\s|[\x00{PunctuationChars.closing_delimiters}{PunctuationChars.delimiters}{PunctuationChars.closers}]))""";
             }
 
             var parts = new RegexDefinitionGroup(
@@ -270,20 +272,20 @@ public class Inliner
         }
     }
 
-    private Dictionary<string, Func<Match, int, (string, List<Node>, string, List<SystemMessage>)>> _dispatch;
+    private Dictionary<string, Func<MatchWrapper, int, (string, List<Node>, string, List<SystemMessage>)>> _dispatch;
 
     private Element? _parent;
     private Reporter? _reporter;
     private Document? _document;
 
-    private (RegexWrapper, Func<Match, int, List<Node>>) _implicitDispatch;
+    private (RegexWrapper, Func<MatchWrapper, int, List<Node>>) _implicitDispatch;
     public static PatternRegistry Patterns { get; } = PatternRegistry.Generate();
 
     public Inliner()
     {
         _implicitDispatch = (Patterns.uri, StandaloneUri);
 
-        _dispatch = new Dictionary<string, Func<Match, int, (string, List<Node>, string, List<SystemMessage>)>> {
+        _dispatch = new Dictionary<string, Func<MatchWrapper, int, (string, List<Node>, string, List<SystemMessage>)>> {
             { "*", (match, lineno) => HandleEmphasis(match, lineno) },
             { "**", (match, lineno) => HandleStrong(match, lineno) },
             { "`", (match, lineno) => HandleInterpretedOrPhraseRef(match, lineno) },
@@ -321,7 +323,7 @@ public class Inliner
         _reporter = memo.Reporter;
         _document = memo.Document;
         _parent = parent;
-        var pattern_search = (string x) => Patterns.initial.Regex.Match(x);
+        var pattern_search = (string x) => Patterns.initial.Search(x);
         var remaining = Util.Escape2Null(text);
         var processed = new List<Node>();
         var unprocessed = new List<string>();
@@ -329,9 +331,9 @@ public class Inliner
         while (!String.IsNullOrEmpty(remaining))
         {
             var match = pattern_search(remaining);
-            if (match.Success)
+            if (match.Match.Success)
             {
-                string methodName = new List<string> { "start", "backquote", "refend", "fnend" }.Select(x => match.Groups[x].Value).FirstOrDefault("");
+                string methodName = new List<string> { "start", "backquote", "refend", "fnend" }.Select(x => match.Match.Groups[x].Value).FirstOrDefault("");
                 var method = _dispatch[methodName];
                 (var before, var inlines, remaining, var sysmessages) = method(match, lineno);
                 unprocessed.Add(before);
@@ -369,16 +371,16 @@ public class Inliner
         }
 
         var (pattern, method) = _implicitDispatch;
-        var match = pattern.Regex.Match(text);
-        if (match.Success)
+        var match = pattern.Search(text);
+        if (match.Match.Success)
         {
             try
             {
                 // Must recurse on strings before *and* after the match;
                 // there may be multiple patterns.
-                var result = ImplicitInline(text[..match.Index], lineno);
+                var result = ImplicitInline(text[..match.Match.Index], lineno);
                 result.AddRange(method(match, lineno));
-                result.AddRange(ImplicitInline(text[(match.Index + match.Length)..], lineno));
+                result.AddRange(ImplicitInline(text[(match.Match.Index + match.Match.Length)..], lineno));
                 return result;
             }
             catch (MarkupMismatch) { }
@@ -387,7 +389,7 @@ public class Inliner
     }
 
 
-    private (string, List<Node>, string, List<SystemMessage>) HandleEmphasis(Match match, int lineno)
+    private (string, List<Node>, string, List<SystemMessage>) HandleEmphasis(MatchWrapper match, int lineno)
     {
         var (before, inlines, remaining, sysmessages, endstring) = HandleInlineObj(
             match, lineno, Patterns.emphasis, Emphasis.Make
@@ -395,7 +397,7 @@ public class Inliner
         return (before, inlines, remaining, sysmessages);
     }
 
-    private (string, List<Node>, string, List<SystemMessage>) HandleStrong(Match match, int lineno)
+    private (string, List<Node>, string, List<SystemMessage>) HandleStrong(MatchWrapper match, int lineno)
     {
         var (before, inlines, remaining, sysmessages, endstring) = HandleInlineObj(
             match, lineno, Patterns.strong, Strong.Make
@@ -403,15 +405,15 @@ public class Inliner
         return (before, inlines, remaining, sysmessages);
     }
 
-    private (string, List<Node>, string, List<SystemMessage>) HandleInterpretedOrPhraseRef(Match match, int lineno)
+    private (string, List<Node>, string, List<SystemMessage>) HandleInterpretedOrPhraseRef(MatchWrapper match, int lineno)
     {
         var end_pattern = Patterns.interpreted_or_phrase_ref;
-        var str = match.Value;
-        var backquoteGroup = match.Groups["backquote"];
+        var str = match.Text;
+        var backquoteGroup = match.Match.Groups["backquote"];
         var matchstart = backquoteGroup.Index;
         var matchend = backquoteGroup.Index + backquoteGroup.Length;
-        var rolestart = match.Groups["role"].Index;
-        var role = match.Groups["role"].Value;
+        var rolestart = match.Match.Groups["role"].Index;
+        var role = match.Match.Groups["role"].Value;
         var position = "";
         SystemMessage msg;
         if (role.Length > 0)
@@ -424,11 +426,11 @@ public class Inliner
             return (str[..matchend], new List<Node>(), str[matchend..], new List<SystemMessage>());
         }
 
-        var endmatch = end_pattern.Regex.Match(str[matchend..]);
-        if (endmatch.Success && endmatch.Groups[1].Index > 0)
+        var endmatch = end_pattern.Search(str[matchend..]);
+        if (endmatch.Match.Success && endmatch.Match.Groups[1].Index > 0)
         {  // 1 or more chars
-            var textend = matchend + endmatch.Index + endmatch.Length;
-            if (endmatch.Groups["role"].Value.Length > 0)
+            var textend = matchend + endmatch.End();
+            if (endmatch.Match.Groups["role"].Value.Length > 0)
             {
                 if (role.Length > 0)
                 {
@@ -439,10 +441,10 @@ public class Inliner
                     );
                     return (str[..rolestart], new List<Node>(), str[textend..], new List<SystemMessage> { msg });
                 }
-                role = endmatch.Groups["suffix"].Value[1..^1];
+                role = endmatch.Match.Groups["suffix"].Value[1..^1];
                 position = "suffix";
             }
-            var escaped = endmatch.Value[..endmatch.Groups[1].Index];
+            var escaped = endmatch.Text[..endmatch.Match.Groups[1].Index];
             var rawsource = Util.Unescape(str[matchstart..textend], true);
             if (rawsource[^1] == '_')
             {
@@ -478,7 +480,7 @@ public class Inliner
         string before, string after, string rawsource, string escaped
     )
     {
-        var match = Patterns.embedded_link.Regex.Match(escaped);
+        var match = Patterns.embedded_link.Search(escaped);
 
         string text;
         string unescaped;
@@ -487,12 +489,12 @@ public class Inliner
         Target? target;
         string aliastype = "";
 
-        if (match.Success)
+        if (match.Match.Success)
         {  // embedded <URI> or <alias_>
-            text = escaped[..match.Index];
+            text = escaped[..match.Match.Index];
             unescaped = Util.Unescape(text);
             rawtext = Util.Unescape(text, true);
-            var aliastext = match.Groups[2].Value;
+            var aliastext = match.Match.Groups[2].Value;
             var rawaliastext = Util.Unescape(aliastext, true);
             var underscore_escaped = rawaliastext.EndsWith("""\_""");
             if (aliastext.EndsWith("_") && !(
@@ -501,21 +503,21 @@ public class Inliner
             {
                 aliastype = "name";
                 alias = Util.FullyNormalizeName(Util.Unescape(aliastext[..^1]));
-                target = new Target(match.Groups[1].Value, "");
+                target = new Target(match.Match.Groups[1].Value, "");
                 target.Attributes["refname"] = alias;
             }
             else
             {
                 aliastype = "uri";
                 // remove unescaped whitespace
-                var alias_parts = Util.SplitEscapedWhitespace(match.Groups[2].Value);
+                var alias_parts = Util.SplitEscapedWhitespace(match.Match.Groups[2].Value);
                 alias = String.Join(' ', alias_parts.Select(part => String.Concat(part.Split())));
                 alias = AdjustUri(Util.Unescape(alias));
                 if (alias.EndsWith("""\_"""))
                 {
                     alias = alias[..^2] + "_";
                 }
-                target = new Target(match.Groups[1].Value, "");
+                target = new Target(match.Match.Groups[1].Value, "");
                 target.Attributes["refuri"] = alias;
             }
             if (aliastext.Length == 0)
@@ -623,7 +625,7 @@ public class Inliner
         return uri;
     }
 
-    private (string, List<Node>, string, List<SystemMessage>) HandleLiteral(Match match, int lineno)
+    private (string, List<Node>, string, List<SystemMessage>) HandleLiteral(MatchWrapper match, int lineno)
     {
         var (before, inlines, remaining, sysmessages, endstring) = HandleInlineObj(
             match,
@@ -635,7 +637,7 @@ public class Inliner
         return (before, inlines, remaining, sysmessages);
     }
 
-    private (string, List<Node>, string, List<SystemMessage>) HandleInlineInternalTarget(Match match, int lineno)
+    private (string, List<Node>, string, List<SystemMessage>) HandleInlineInternalTarget(MatchWrapper match, int lineno)
     {
         var (before, inlines, remaining, sysmessages, endstring) = HandleInlineObj(
             match, lineno, Patterns.target, Target.Make
@@ -655,19 +657,19 @@ public class Inliner
         return (before, inlines, remaining, sysmessages);
     }
 
-    private (string, List<Node>, string, List<SystemMessage>) HandleFootnoteReference(Match match, int lineno)
+    private (string, List<Node>, string, List<SystemMessage>) HandleFootnoteReference(MatchWrapper match, int lineno)
     {
         // Handles `nodes.footnote_reference` and `nodes.citation_reference`
         // elements.
 
-        var label = match.Groups["footnotelabel"].Value;
+        var label = match.Match.Groups["footnotelabel"].Value;
         var refname = Util.FullyNormalizeName(label);
-        var str = match.Value;
-        var wholeGroup = match.Groups["whole"];
+        var str = match.Text;
+        var wholeGroup = match.Match.Groups["whole"];
         var before = str[..wholeGroup.Index];
         var remaining = str[(wholeGroup.Index + wholeGroup.Length)..];
         Element returnNode;
-        if (match.Groups["citationlabel"].Success)
+        if (match.Match.Groups["citationlabel"].Success)
         {
             var refnode = new CitationReference($"[{label}]_");
             returnNode = refnode;
@@ -710,7 +712,7 @@ public class Inliner
 
     }
 
-    private (string, List<Node>, string, List<SystemMessage>) HandleSubstitutionReference(Match match, int lineno)
+    private (string, List<Node>, string, List<SystemMessage>) HandleSubstitutionReference(MatchWrapper match, int lineno)
     {
         var (before, inlines, remaining, sysmessages, endstring) = HandleInlineObj(
             match, lineno, Patterns.substitution_ref, SubstitutionReference.Make
@@ -743,12 +745,12 @@ public class Inliner
         return (before, inlines, remaining, sysmessages);
     }
 
-    private (string, List<Node>, string, List<SystemMessage>) HandleReference(Match match, int lineno, bool anonymous = false)
+    private (string, List<Node>, string, List<SystemMessage>) HandleReference(MatchWrapper match, int lineno, bool anonymous = false)
     {
-        var referencename = match.Groups["refname"].Value;
+        var referencename = match.Match.Groups["refname"].Value;
         var refname = Util.FullyNormalizeName(referencename);
         var referencenode = new Reference(
-            referencename + match.Groups["refend"].Value,
+            referencename + match.Match.Groups["refend"].Value,
             referencename
         );
         referencenode.Attributes["name"] = Util.WhitespaceNormalizeName(referencename);
@@ -762,20 +764,20 @@ public class Inliner
             referencenode.Attributes["refname"] = refname;
             _document!.NoteRefname(referencenode);
         }
-        var str = match.Value;
+        var str = match.Text;
 
-        var wholeGroup = match.Groups["whole"];
+        var wholeGroup = match.Match.Groups["whole"];
         var matchstart = wholeGroup.Index;
         var matchend = wholeGroup.Index + wholeGroup.Length;
         return (str[..matchstart], new List<Node> { referencenode }, str[matchend..], new List<SystemMessage>());
     }
 
-    private (string, List<Node>, string, List<SystemMessage>) HandleAnonymousReference(Match match, int lineno)
+    private (string, List<Node>, string, List<SystemMessage>) HandleAnonymousReference(MatchWrapper match, int lineno)
     {
         return HandleReference(match, lineno, anonymous: true);
     }
 
-    private bool QuotedStart(Match match)
+    private bool QuotedStart(MatchWrapper match)
     {
         // Test if inline markup start-string is 'quoted'
 
@@ -783,8 +785,8 @@ public class Inliner
         // of matching opening/closing delimiters (not necessarily quotes)
         // or at the end of the match.
 
-        var str = match.Value;
-        var start = match.Index;
+        var str = match.Text;
+        var start = match.Match.Index;
         if (start == 0)
         {  // start-string at beginning of text
             return false;
@@ -792,7 +794,7 @@ public class Inliner
         var prestart = str[start - 1];
         try
         {
-            var poststart = str[match.Index + match.Length];
+            var poststart = str[match.Match.Index + match.Match.Length];
             return PunctuationChars.match_chars(prestart, poststart);
         }
         catch (IndexOutOfRangeException)
@@ -803,32 +805,34 @@ public class Inliner
 
 
     private (string, List<Node>, string, List<SystemMessage>, string) HandleInlineObj(
-        Match match,
+        MatchWrapper match,
         int lineno,
         RegexWrapper end_pattern,
         Func<string, string, Node> nodeclass,
         bool restore_backslashes = false
     )
     {
-        var str = match.Value;
-        var startGroup = match.Groups["start"];
+        var str = match.Text;
+        var startGroup = match.Match.Groups["start"];
         var matchstart = startGroup.Index;
         var matchend = startGroup.Index + startGroup.Length;
+
         string text;
+
         if (QuotedStart(match))
         {
             return (str[..matchend], new List<Node>(), str[matchend..], new List<SystemMessage>(), "");
         }
-        var endmatch = end_pattern.Regex.Match(str[matchend..]);
-        if (endmatch.Success && endmatch.Groups[1].Success)
+        var endmatch = end_pattern.Search(str[matchend..]);
+        if (endmatch.Match.Success && endmatch.Match.Groups[1].Success)
         { // 1 or more chars
-            text = endmatch.Value[..endmatch.Groups[1].Index];
+            text = endmatch.Text[..endmatch.Match.Groups[1].Index];
             if (restore_backslashes)
             {
                 text = Util.Unescape(text, true);
             }
 
-            var firstGroup = endmatch.Groups[1];
+            var firstGroup = endmatch.Match.Groups[1];
             var textend = matchend + firstGroup.Index + firstGroup.Length;
             var rawsource = Util.Unescape(str[matchstart..textend], true);
             var node = nodeclass(rawsource, text);
@@ -837,30 +841,29 @@ public class Inliner
                 new List<Node> { node },
                 str[textend..],
                 new List<SystemMessage>(),
-                endmatch.Groups[1].Value
+                endmatch.Match.Groups[1].Value
             );
         }
         var msg = _reporter!.Warning(
             $"Inline {nodeclass} start-string without end-string.",
             line: lineno
         );
-        text = Util.Unescape(str[matchstart..matchend], true);
         return (str[..matchstart], new List<Node>(), str[matchend..], new List<SystemMessage> { msg }, "");
     }
 
-    private List<Node> StandaloneUri(Match match, int lineno)
+    private List<Node> StandaloneUri(MatchWrapper match, int lineno)
     {
         if (
-            !match.Groups.ContainsKey("scheme")
-            || UriSchemes.SCHEMES.ContainsKey(match.Groups["scheme"].Value.ToLowerInvariant())
+            !match.Match.Groups.ContainsKey("scheme")
+            || UriSchemes.SCHEMES.ContainsKey(match.Match.Groups["scheme"].Value.ToLowerInvariant())
         )
         {
             string addscheme = "";
-            if (match.Groups.ContainsKey("email"))
+            if (match.Match.Groups.ContainsKey("email"))
             {
                 addscheme = "mailto:";
             }
-            var text = match.Groups["whole"].Value;
+            var text = match.Match.Groups["whole"].Value;
             var refuri = addscheme + Util.Unescape(text);
             var reference = new Reference(Util.Unescape(text, true), text);
             reference.Attributes["refuri"] = refuri;
@@ -1123,14 +1126,17 @@ public abstract class RSTState : tinydocutils.State
         StyleKind style,
         int lineno,
         List<SystemMessage> messages
-    ) {
+    )
+    {
         // Check for a valid subsection and create one if it checks out.
-        if (CheckSubsection(source, style, lineno)) {
+        if (CheckSubsection(source, style, lineno))
+        {
             NewSubsection(title, lineno, messages);
         }
     }
 
-    protected bool CheckSubsection(string source, StyleKind style, int lineno) {
+    protected bool CheckSubsection(string source, StyleKind style, int lineno)
+    {
         // Check for a valid subsection header.  Return 1 (true) or None (false).
 
         // When a new section is reached that isn't a subsection of the current
@@ -1151,19 +1157,25 @@ public abstract class RSTState : tinydocutils.State
 
         // check for existing title style
         int level = title_styles.IndexOf(style) + 1;
-        if (level == 0) {  // new title style
-            if (title_styles.Count == _memo.SectionLevel) {   // new subsection
+        if (level == 0)
+        {  // new title style
+            if (title_styles.Count == _memo.SectionLevel)
+            {   // new subsection
                 title_styles.Add(style);
                 return true;
-            } else {  // not at lowest level
+            }
+            else
+            {  // not at lowest level
                 _parent!.Add(TitleInconsistent(source, lineno));
                 return false;
             }
         }
 
-        if (level <= mylevel) {  // sibling or supersection
+        if (level <= mylevel)
+        {  // sibling or supersection
             _memo!.SectionLevel = level;  // bubble up to parent section
-            if (style.Overline is not null) {
+            if (style.Overline is not null)
+            {
                 _memo.SectionBubbleUpKludge = true;
             }
 
@@ -1171,15 +1183,19 @@ public abstract class RSTState : tinydocutils.State
             _stateMachine.PreviousLine(style.Count + 1);
             throw new EOFError();  // let parent section re-evaluate
         }
-        if (level == mylevel + 1) {  // immediate subsection
+        if (level == mylevel + 1)
+        {  // immediate subsection
             return true;
-        } else {  // invalid subsection
+        }
+        else
+        {  // invalid subsection
             _parent!.Add(TitleInconsistent(source, lineno));
             return false;
         }
     }
 
-    protected SystemMessage TitleInconsistent(string sourcetext, int lineno) {
+    protected SystemMessage TitleInconsistent(string sourcetext, int lineno)
+    {
         return _reporter!.Severe(
             "Title level inconsistent:",
             line: lineno
@@ -1188,7 +1204,8 @@ public abstract class RSTState : tinydocutils.State
 
     protected void NewSubsection(
         string title, int lineno, List<SystemMessage> messages
-    ) {
+    )
+    {
         // Append new subsection to document tree. On return, check level.
         Debug.Assert(_memo is not null);
 
@@ -1215,7 +1232,8 @@ public abstract class RSTState : tinydocutils.State
             match_titles: true
         );
         GotoLine(newabsoffset);
-        if (_memo.SectionLevel <= mylevel) {  // can't handle next section?
+        if (_memo.SectionLevel <= mylevel)
+        {  // can't handle next section?
             throw new EOFError();  // bubble up to supersection
         }
         // reset section_level; next pass will detect it properly
@@ -1224,25 +1242,36 @@ public abstract class RSTState : tinydocutils.State
 
     protected (List<Element>, bool) HandleParagraph(
         List<string> lines, int lineno
-    ) {
+    )
+    {
+
         // Return a list (paragraph & messages) & a boolean: literal_block next?
 
         var data = String.Join('\n', lines).TrimEnd();
         string text;
         bool literalnext;
-        if (Regex.IsMatch(data, """(?<!\\)(\\\\)*::$""")) {
-            if (data.Length == 2) {
+        if (Regex.IsMatch(data, """(?<!\\)(\\\\)*::$"""))
+        {
+            if (data.Length == 2)
+            {
                 return (new List<Element>(), true);
-            } else if (" \n".Contains(data[^3])) {
+            }
+            else if (" \n".Contains(data[^3]))
+            {
                 text = data[..^3].TrimEnd();
-            } else {
+            }
+            else
+            {
                 text = data[..^1];
             }
             literalnext = true;
-        } else {
+        }
+        else
+        {
             text = data;
             literalnext = false;
         }
+
         var (textnodes, messages) = InlineText(text, lineno);
         var p = new Paragraph(data, "");
         p.AddRange(textnodes);
@@ -1277,7 +1306,7 @@ public abstract class RSTState : tinydocutils.State
     }
 
     protected virtual TransitionResult BlankTransition(
-        Match match,
+        MatchWrapper match,
         List<string> context,
         IStateBuilder next_state
     )
@@ -1287,7 +1316,7 @@ public abstract class RSTState : tinydocutils.State
     }
 
     protected virtual TransitionResult IndentTransition(
-        Match match,
+        MatchWrapper match,
         List<string> context,
         IStateBuilder next_state
     )
@@ -1456,9 +1485,9 @@ public class BodyState : RSTState
         );
     }
 
-    public List<(Func<Match, (List<Node>, bool)>, Regex)> Constructs { get; init; }
+    public List<(Func<MatchWrapper, (List<Node>, bool)>, RegexWrapper)> Constructs { get; init; }
 
-    private static readonly Regex PAT_FOOTNOTE = new Regex(
+    private static readonly RegexWrapper PAT_FOOTNOTE = new RegexWrapper(
         $"""
             ^\.\.[ ]+                                      (?# explicit markup start)
             \[
@@ -1477,7 +1506,7 @@ public class BodyState : RSTState
         RegexOptions.IgnorePatternWhitespace | RegexOptions.Compiled
     );
 
-    private static readonly Regex PAT_CITATION = new Regex(
+    private static readonly RegexWrapper PAT_CITATION = new RegexWrapper(
         $"""
             ^\.\.[ ]+          (?# explicit markup start)
             \[({Inliner.PatternRegistry.simplename})\]          (?# citation label)
@@ -1486,7 +1515,7 @@ public class BodyState : RSTState
         RegexOptions.IgnorePatternWhitespace | RegexOptions.Compiled
     );
 
-    private static readonly Regex PAT_HYPERLINK_TARGET = new Regex(
+    private static readonly RegexWrapper PAT_HYPERLINK_TARGET = new RegexWrapper(
         """
             ^\.\.[ ]+          (?# explicit markup start)
             _                 (?# target indicator)
@@ -1495,7 +1524,7 @@ public class BodyState : RSTState
         RegexOptions.IgnorePatternWhitespace | RegexOptions.Compiled
     );
 
-    private static readonly Regex PAT_SUBSTITUTION_DEF = new Regex(
+    private static readonly RegexWrapper PAT_SUBSTITUTION_DEF = new RegexWrapper(
         """
             ^\.\.[ ]+          (?# explicit markup start)
             \|                (?# substitution indicator)
@@ -1504,7 +1533,7 @@ public class BodyState : RSTState
         RegexOptions.IgnorePatternWhitespace | RegexOptions.Compiled
     );
 
-    private static readonly Regex PAT_DIRECTIVE = new Regex(
+    private static readonly RegexWrapper PAT_DIRECTIVE = new RegexWrapper(
         $"""
             ^\.\.[ ]+                                  (?# explicit markup start)
             ({Inliner.PatternRegistry.simplename})    (?# directive name)
@@ -1537,7 +1566,7 @@ public class BodyState : RSTState
             new TransitionTuple("text", Patterns.Text, (match, context, nextState) => TextTransition(match, context, nextState), GetStateBuilder()),
         };
 
-        Constructs = new List<(Func<Match, (List<Node>, bool)>, Regex)> {
+        Constructs = new List<(Func<MatchWrapper, (List<Node>, bool)>, RegexWrapper)> {
             ((match) => HandleFootnote(match), PAT_FOOTNOTE),
             ((match) => HandleCitation(match), PAT_CITATION),
             ((match) => HandleHyperlinkTarget(match), PAT_HYPERLINK_TARGET),
@@ -1546,7 +1575,7 @@ public class BodyState : RSTState
         };
     }
 
-    protected virtual TransitionResult BulletTransition(Match match, List<string> context, IStateBuilder nextState)
+    protected virtual TransitionResult BulletTransition(MatchWrapper match, List<string> context, IStateBuilder nextState)
     {
         var bulletlist = new BulletList();
         Debug.Assert(_stateMachine.InputLines is not null);
@@ -1555,8 +1584,8 @@ public class BodyState : RSTState
         bulletlist.Line = sourceAndLine.Item2;
 
         _parent!.Add(bulletlist);
-        bulletlist.Attributes["bullet"] = match.Groups[0].Value;
-        var (i, blank_finish) = HandleListItem(match.Index + match.Length);
+        bulletlist.Attributes["bullet"] = match.Match.Groups[0].Value;
+        var (i, blank_finish) = HandleListItem(match.Match.Index + match.Match.Length);
         bulletlist.Add(i);
         var offset = _stateMachine.LineOffset + 1;  // next line
         (var new_line_offset, blank_finish) = NestedListParse(
@@ -1574,7 +1603,7 @@ public class BodyState : RSTState
         return new TransitionResult(new List<string>(), nextState);
     }
 
-    protected virtual TransitionResult EnumeratorTransition(Match match, List<string> context, IStateBuilder nextState)
+    protected virtual TransitionResult EnumeratorTransition(MatchWrapper match, List<string> context, IStateBuilder nextState)
     {
         // Enumerated List Item
         var (format, sequence, text, ordinal) = ParseEnumerator(match);
@@ -1602,7 +1631,7 @@ public class BodyState : RSTState
             );
             _parent.Add(msg);
         }
-        var (listitem, blank_finish) = HandleListItem(match.Index + match.Length);
+        var (listitem, blank_finish) = HandleListItem(match.Match.Index + match.Match.Length);
         enumlist.Add(listitem);
 
         var offset = _stateMachine.LineOffset + 1;  // next line
@@ -1623,7 +1652,7 @@ public class BodyState : RSTState
     }
 
     protected (string, string, string, int) ParseEnumerator(
-        Match match, string? expected_sequence = null
+        MatchWrapper match, string? expected_sequence = null
     )
     {
         // Analyze an enumerator and return the results.
@@ -1647,7 +1676,7 @@ public class BodyState : RSTState
         string? selectedFormat = null;
         foreach (var format in EnumInfo.FORMATS)
         {
-            if (match.Groups[format].Length > 0)
+            if (match.Match.Groups[format].Length > 0)
             {  // was this the format matched?
                 selectedFormat = format;
                 break;  // yes; keep `format`
@@ -1658,7 +1687,7 @@ public class BodyState : RSTState
         {  // shouldn't happen
             throw new ParserError("enumerator format not matched");
         }
-        var text = match.Groups[selectedFormat].Value[
+        var text = match.Match.Groups[selectedFormat].Value[
             EnumInfo.FORMAT_INFO[selectedFormat].Start..EnumInfo.FORMAT_INFO[selectedFormat].End
         ];
         if (text == "#")
@@ -1823,7 +1852,7 @@ public class BodyState : RSTState
         return (next_enumerator, auto_enumerator);
     }
 
-    protected virtual TransitionResult FieldMarkerTransition(Match match, List<string> context, IStateBuilder nextState)
+    protected virtual TransitionResult FieldMarkerTransition(MatchWrapper match, List<string> context, IStateBuilder nextState)
     {
         // Field list item.
         var field_list = new FieldList();
@@ -1847,7 +1876,7 @@ public class BodyState : RSTState
         return new TransitionResult(new List<string>(), nextState);
     }
 
-    protected (Field, bool) FieldHandler(Match match)
+    protected (Field, bool) FieldHandler(MatchWrapper match)
     {
         var name = ParseFieldMarker(match);
 
@@ -1858,7 +1887,7 @@ public class BodyState : RSTState
             indent,
             line_offset,
             blank_finish
-        ) = _stateMachine.GetFirstKnownIndented(match.Index + match.Length);
+        ) = _stateMachine.GetFirstKnownIndented(match.Match.Index + match.Match.Length);
         var field_node = new Field();
         field_node.Source = src;
         field_node.Line = srcline;
@@ -1876,16 +1905,16 @@ public class BodyState : RSTState
         return (field_node, blank_finish);
     }
 
-    protected string ParseFieldMarker(Match match)
+    protected string ParseFieldMarker(MatchWrapper match)
     {
         // Extract & return field name from a field marker match.
-        var field = match.Value[1..];               // strip off leading ':'
+        var field = match.Text[1..];               // strip off leading ':'
         field = field[..field.LastIndexOf(':')];    // strip off trailing ':' etc.
         return field;
     }
 
 
-    protected virtual TransitionResult OptionMarkerTransition(Match match, List<string> context, IStateBuilder nextState)
+    protected virtual TransitionResult OptionMarkerTransition(MatchWrapper match, List<string> context, IStateBuilder nextState)
     {
         // Option list item.
         var optionlist = new OptionList();
@@ -1910,7 +1939,7 @@ public class BodyState : RSTState
                 var indent,
                 var line_offset,
                 blank_finish
-            ) = _stateMachine.GetFirstKnownIndented(match.Index + match.Length);
+            ) = _stateMachine.GetFirstKnownIndented(match.Match.Index + match.Match.Length);
             var elements = HandleBlockQuote(indented, line_offset);
             _parent.AddRange(elements);
             if (!blank_finish)
@@ -1937,7 +1966,7 @@ public class BodyState : RSTState
         return new TransitionResult(new List<string>(), nextState);
     }
 
-    protected virtual TransitionResult DoctestTransition(Match match, List<string> context, IStateBuilder nextState)
+    protected virtual TransitionResult DoctestTransition(MatchWrapper match, List<string> context, IStateBuilder nextState)
     {
         var data = String.Join('\n', _stateMachine.GetTextBlock());
         // TODO: prepend class value ['pycon'] (Python Console)
@@ -1947,7 +1976,7 @@ public class BodyState : RSTState
         return new TransitionResult(new List<string>(), nextState);
     }
 
-    protected virtual TransitionResult LineBlockTransition(Match match, List<string> context, IStateBuilder nextState)
+    protected virtual TransitionResult LineBlockTransition(MatchWrapper match, List<string> context, IStateBuilder nextState)
     {
         // First line of a line block.
         var block = new LineBlock();
@@ -1984,7 +2013,7 @@ public class BodyState : RSTState
         return new TransitionResult(new List<string>(), nextState);
     }
 
-    protected virtual TransitionResult ExplicitMarkupTransition(Match match, List<string> context, IStateBuilder nextState)
+    protected virtual TransitionResult ExplicitMarkupTransition(MatchWrapper match, List<string> context, IStateBuilder nextState)
     {
         // Footnotes, hyperlink targets, directives, comments.
         var (nodelist, blank_finish) = ExplicitConstruct(match);
@@ -1994,7 +2023,7 @@ public class BodyState : RSTState
 
     }
 
-    protected virtual TransitionResult AnonymousTransition(Match match, List<string> context, IStateBuilder nextState)
+    protected virtual TransitionResult AnonymousTransition(MatchWrapper match, List<string> context, IStateBuilder nextState)
     {
         // Anonymous hyperlink targets.
         var (nodelist, blank_finish) = HandleAnonymousTarget(match);
@@ -2003,19 +2032,19 @@ public class BodyState : RSTState
         return new TransitionResult(new List<string>(), nextState);
     }
 
-    protected virtual TransitionResult LineTransition(Match match, List<string> context, IStateBuilder nextState)
+    protected virtual TransitionResult LineTransition(MatchWrapper match, List<string> context, IStateBuilder nextState)
     {
         // Section title overline or transition marker.
 
         if (((RSTStateMachine)_stateMachine).MatchTitles)
         {
-            return new TransitionResult(new List<string> { match.Value }, LineState.Builder.Instance);
+            return new TransitionResult(new List<string> { match.Text }, LineState.Builder.Instance);
         }
-        else if (match.Value.Trim() == "::")
+        else if (match.Text.Trim() == "::")
         {
             throw new TransitionCorrection("text");
         }
-        else if (match.Value.Trim().Length < 4)
+        else if (match.Text.Trim().Length < 4)
         {
             var msg = _reporter!.Info(
                 "Unexpected possible title overline or transition.\n" +
@@ -2038,12 +2067,12 @@ public class BodyState : RSTState
         }
     }
 
-    protected virtual TransitionResult TextTransition(Match match, List<string> context, IStateBuilder nextState)
+    protected virtual TransitionResult TextTransition(MatchWrapper match, List<string> context, IStateBuilder nextState)
     {
-        return new TransitionResult(new List<string> { match.Value }, TextState.Builder.Instance);
+        return new TransitionResult(new List<string> { match.Text }, TextState.Builder.Instance);
     }
 
-    private (List<Target>, bool) HandleAnonymousTarget(Match match)
+    private (List<Target>, bool) HandleAnonymousTarget(MatchWrapper match)
     {
         var lineno = _stateMachine.AbsLineNumber();
         var (
@@ -2051,8 +2080,8 @@ public class BodyState : RSTState
             indent,
             offset,
             blank_finish
-        ) = _stateMachine.GetFirstKnownIndented(match.Index + match.Length, untilBlank: true);
-        var blocktext = match.Value[..(match.Index + match.Length)] + String.Join('\n', block);
+        ) = _stateMachine.GetFirstKnownIndented(match.Match.Index + match.Match.Length, untilBlank: true);
+        var blocktext = match.Text[..(match.Match.Index + match.Match.Length)] + String.Join('\n', block);
         var escaped_block = block.Select(line => Util.Escape2Null(line)).ToList();
         var target = MakeTarget(escaped_block, blocktext, lineno, "");
         return (new List<Target> { target }, blank_finish);
@@ -2112,16 +2141,16 @@ public class BodyState : RSTState
 
     private string? IsReference(string reference)
     {
-        var match = ExplicitInfo.PAT_REFERENCE.RegexAnchoredAtStart.Match(Util.WhitespaceNormalizeName(reference));
-        if (!match.Success)
+        var match = ExplicitInfo.PAT_REFERENCE.MatchAnchored(Util.WhitespaceNormalizeName(reference));
+        if (!match.Match.Success)
         {
             return null;
         }
 
-        var result = match.Groups["simple"].Value;
+        var result = match.Match.Groups["simple"].Value;
         if (result.Length == 0)
         {
-            result = match.Groups["phrase"].Value;
+            result = match.Match.Groups["phrase"].Value;
         }
 
         return Util.Unescape(result);
@@ -2192,7 +2221,7 @@ public class BodyState : RSTState
 
     }
 
-    protected (OptionListItem, bool) HandleOptionListItem(Match match)
+    protected (OptionListItem, bool) HandleOptionListItem(MatchWrapper match)
     {
         var offset = _stateMachine.AbsLineOffset();
         var options = ParseOptionMarker(match);
@@ -2201,7 +2230,7 @@ public class BodyState : RSTState
             indent,
             line_offset,
             blank_finish
-        ) = _stateMachine.GetFirstKnownIndented(match.Index + match.Length);
+        ) = _stateMachine.GetFirstKnownIndented(match.Match.Index + match.Match.Length);
         if (indented.Count == 0)
         {  // not an option list item
             GotoLine(offset);
@@ -2240,14 +2269,14 @@ public class BodyState : RSTState
         }
     }
 
-    private (List<Node>, bool) ExplicitConstruct(Match match)
+    private (List<Node>, bool) ExplicitConstruct(MatchWrapper match)
     {
         // Determine which explicit construct this is, parse & return it.
         var errors = new List<SystemMessage>();
         foreach (var (method, pattern) in Constructs)
         {
-            var expmatch = pattern.Match(match.Value);
-            if (expmatch.Success)
+            var expmatch = pattern.Search(match.Text);
+            if (expmatch.Match.Success)
             {
                 try
                 {
@@ -2267,10 +2296,10 @@ public class BodyState : RSTState
     }
 
 
-    private (List<Node>, bool) HandleComment(Match match)
+    private (List<Node>, bool) HandleComment(MatchWrapper match)
     {
         if (
-            match.Value[(match.Index + match.Length)..].Trim().Length == 0
+            match.Text[(match.Match.Index + match.Match.Length)..].Trim().Length == 0
             && _stateMachine!.IsNextLineBlank()
         )
         {  // an empty comment?
@@ -2281,7 +2310,7 @@ public class BodyState : RSTState
             indent,
             offset,
             blank_finish
-        ) = _stateMachine.GetFirstKnownIndented(match.Index + match.Length);
+        ) = _stateMachine.GetFirstKnownIndented(match.Match.Index + match.Match.Length);
         while (indented.Count > 0 && indented[^1].Trim().Length == 0)
         {
             indented.TrimEnd();
@@ -2290,14 +2319,14 @@ public class BodyState : RSTState
         return (new List<Node> { new Comment(text, text) }, blank_finish);
     }
 
-    private List<Option> ParseOptionMarker(Match match)
+    private List<Option> ParseOptionMarker(MatchWrapper match)
     {
         // Return a list of `node.option` and `node.option_argument` objects,
         // parsed from an option marker match.
 
         // :Exception: `MarkupError` for invalid option markers.
         var optlist = new List<Option>();
-        var optionstrings = match.Value.TrimEnd().Split(", ");
+        var optionstrings = match.Text.TrimEnd().Split(", ");
         foreach (var optionstring in optionstrings)
         {
             var tokens = optionstring.Split().ToList();
@@ -2354,7 +2383,7 @@ public class BodyState : RSTState
         NestedParse(indented, input_offset: offset, node: node);
     }
 
-    protected (Line, List<SystemMessage>, bool) LineBlockLine(Match match, int lineno)
+    protected (Line, List<SystemMessage>, bool) LineBlockLine(MatchWrapper match, int lineno)
     {
         // Return one line element of a line_block.
 
@@ -2363,7 +2392,7 @@ public class BodyState : RSTState
             indent,
             line_offset,
             blank_finish
-        ) = _stateMachine.GetFirstKnownIndented(match.Index + match.Length, untilBlank: true);
+        ) = _stateMachine.GetFirstKnownIndented(match.Match.Index + match.Match.Length, untilBlank: true);
         var text = String.Join('\n', indented);
         var (text_nodes, messages) = InlineText(text, lineno);
         var line = new Line(text, "");
@@ -2371,9 +2400,9 @@ public class BodyState : RSTState
         {
             line.Add(node);
         }
-        if (match.Value.TrimEnd() != "|")
+        if (match.Text.TrimEnd() != "|")
         {  // not empty
-            line.Indent = match.Groups[1].Length - 1;
+            line.Indent = match.Match.Groups[1].Length - 1;
         }
         return (line, messages, blank_finish);
     }
@@ -2448,7 +2477,7 @@ public class BodyState : RSTState
         }
     }
 
-    protected (List<Node>, bool) HandleFootnote(Match match)
+    protected (List<Node>, bool) HandleFootnote(MatchWrapper match)
     {
         var (src, srcline) = _stateMachine.GetSourceAndLine();
         var (
@@ -2456,8 +2485,8 @@ public class BodyState : RSTState
             indent,
             offset,
             blank_finish
-        ) = _stateMachine.GetFirstKnownIndented(match.Index + match.Length);
-        var label = match.Groups[1].Value;
+        ) = _stateMachine.GetFirstKnownIndented(match.Match.Index + match.Match.Length);
+        var label = match.Match.Groups[1].Value;
         var name = Util.FullyNormalizeName(label);
         var footnote = new Footnote(String.Join('\n', indented));
         footnote.Source = src;
@@ -2499,7 +2528,7 @@ public class BodyState : RSTState
         return (new List<Node> { footnote }, blank_finish);
     }
 
-    protected (List<Node>, bool) HandleCitation(Match match)
+    protected (List<Node>, bool) HandleCitation(MatchWrapper match)
     {
         var (src, srcline) = _stateMachine.GetSourceAndLine();
         var (
@@ -2507,8 +2536,8 @@ public class BodyState : RSTState
             indent,
             offset,
             blank_finish
-        ) = _stateMachine.GetFirstKnownIndented(match.Index + match.Length);
-        var label = match.Groups[1].Value;
+        ) = _stateMachine.GetFirstKnownIndented(match.Match.Index + match.Match.Length);
+        var label = match.Match.Groups[1].Value;
         var name = Util.FullyNormalizeName(label);
         var citation = new Citation(String.Join('\n', indented));
         citation.Source = src;
@@ -2524,7 +2553,7 @@ public class BodyState : RSTState
         return (new List<Node> { citation }, blank_finish);
     }
 
-    protected (List<Node>, bool) HandleHyperlinkTarget(Match match)
+    protected (List<Node>, bool) HandleHyperlinkTarget(MatchWrapper match)
     {
         var pattern = ExplicitInfo.PAT_TARGET;
 
@@ -2535,17 +2564,17 @@ public class BodyState : RSTState
             offset,
             blank_finish
         ) = _stateMachine.GetFirstKnownIndented(
-            match.Index + match.Length, untilBlank: true, stripIndent: false
+            match.Match.Index + match.Match.Length, untilBlank: true, stripIndent: false
         );
-        var blocktext = match.Value[..(match.Index + match.Length)] + String.Join('\n', block);
+        var blocktext = match.Text[..(match.Match.Index + match.Match.Length)] + String.Join('\n', block);
         var escaped_block = block.Select(lineno => Util.Escape2Null(lineno)).ToList();
         var escaped = escaped_block[0];
         var blockindex = 0;
-        Match targetmatch;
+        MatchWrapper targetmatch;
         while (true)
         {
-            targetmatch = pattern.RegexAnchoredAtStart.Match(escaped);
-            if (targetmatch.Success)
+            targetmatch = pattern.MatchAnchored(escaped);
+            if (targetmatch.Match.Success)
             {
                 break;
             }
@@ -2561,15 +2590,15 @@ public class BodyState : RSTState
         }
         escaped_block.RemoveRange(0, blockindex);
         escaped_block[0] = (escaped_block[0] + " ")[
-            ((targetmatch.Index + targetmatch.Length) - escaped.Length - 1)..
+            ((targetmatch.Match.Index + targetmatch.Match.Length) - escaped.Length - 1)..
         ].Trim();
         var target = MakeTarget(
-            escaped_block, blocktext, lineno, targetmatch.Groups["name"].Value
+            escaped_block, blocktext, lineno, targetmatch.Match.Groups["name"].Value
         );
         return (new List<Node> { target }, blank_finish);
     }
 
-    protected (List<Node>, bool) HandleSubstitutionDef(Match match)
+    protected (List<Node>, bool) HandleSubstitutionDef(MatchWrapper match)
     {
         var pattern = ExplicitInfo.PAT_SUBSTITUTION;
 
@@ -2579,16 +2608,16 @@ public class BodyState : RSTState
             indent,
             offset,
             blank_finish
-        ) = _stateMachine.GetFirstKnownIndented(match.Index + match.Length, stripIndent: false);
-        var blocktext = match.Value[..(match.Index + match.Length)] + String.Join('\n', block);
+        ) = _stateMachine.GetFirstKnownIndented(match.Match.Index + match.Match.Length, stripIndent: false);
+        var blocktext = match.Text[..(match.Match.Index + match.Match.Length)] + String.Join('\n', block);
         block.Disconnect();
         var escaped = Util.Escape2Null(block[0].TrimEnd());
         var blockindex = 0;
-        Match subdefmatch;
+        MatchWrapper subdefmatch;
         while (true)
         {
-            subdefmatch = pattern.RegexAnchoredAtStart.Match(escaped);
-            if (subdefmatch.Success)
+            subdefmatch = pattern.MatchAnchored(escaped);
+            if (subdefmatch.Match.Success)
             {
                 break;
             }
@@ -2603,7 +2632,8 @@ public class BodyState : RSTState
             }
         }
         block.RemoveRange(0, blockindex); // strip out the substitution marker
-        block[0] = (block[0].Trim() + " ")[((subdefmatch.Index + subdefmatch.Length) - escaped.Length - 1)..];
+        var startSliceIndex = Math.Max(0, ((subdefmatch.Match.Index + subdefmatch.Match.Length) - escaped.Length - 1));
+        block[0] = (block[0].Trim() + " ")[startSliceIndex..^1];
         if (block[0].Length == 0)
         {
             block.RemoveAt(0);
@@ -2613,7 +2643,7 @@ public class BodyState : RSTState
         {
             block.Pop();
         }
-        var subname = subdefmatch.Groups["name"].Value;
+        var subname = subdefmatch.Match.Groups["name"].Value;
         var substitution_node = new SubstitutionDefinition(blocktext);
         substitution_node.Source = src;
         substitution_node.Line = srcline;
@@ -2688,10 +2718,10 @@ public class BodyState : RSTState
         }
     }
 
-    protected (List<Node>, bool) HandleDirective(Match match)
+    protected (List<Node>, bool) HandleDirective(MatchWrapper match)
     {
         // Returns a 2-tuple: list of nodes, and a "blank finish" boolean.
-        var type_name = match.Groups[1].Value;
+        var type_name = match.Match.Groups[1].Value;
         Debug.Assert(_document is not null);
         var directive_class = _document.Settings.LookupDirective(type_name);
         if (directive_class is not null)
@@ -2706,7 +2736,7 @@ public class BodyState : RSTState
 
     protected (List<Node>, bool) RunDirective(
         IDirective directive,
-        Match match,
+        MatchWrapper match,
         string type_name,
         Dictionary<string, object> option_presets
     )
@@ -2737,7 +2767,7 @@ public class BodyState : RSTState
             indent,
             line_offset,
             blank_finish
-        ) = _stateMachine.GetFirstKnownIndented(match.Index + match.Length, stripTop: false);
+        ) = _stateMachine.GetFirstKnownIndented(match.Match.Index + match.Match.Length, stripTop: false);
         var block_text = String.Join('\n',
             _stateMachine.InputLines![
                 initial_line_offset..(_stateMachine.LineOffset + 1)
@@ -3027,7 +3057,7 @@ public class SpecializedBodyState : BodyState
     public SpecializedBodyState(StateMachine sm) : base(sm) { }
 
     protected TransitionResult InvalidInput(
-        Match match,
+        MatchWrapper match,
         List<string> context,
         IStateBuilder next_state
     )
@@ -3039,7 +3069,7 @@ public class SpecializedBodyState : BodyState
     }
 
     protected override TransitionResult IndentTransition(
-        Match match,
+        MatchWrapper match,
         List<string> context,
         IStateBuilder next_state
     )
@@ -3048,7 +3078,7 @@ public class SpecializedBodyState : BodyState
     }
 
     protected override TransitionResult BulletTransition(
-        Match match,
+        MatchWrapper match,
         List<string> context,
         IStateBuilder next_state
     )
@@ -3057,7 +3087,7 @@ public class SpecializedBodyState : BodyState
     }
 
     protected override TransitionResult EnumeratorTransition(
-        Match match,
+        MatchWrapper match,
         List<string> context,
         IStateBuilder next_state
     )
@@ -3066,7 +3096,7 @@ public class SpecializedBodyState : BodyState
     }
 
     protected virtual TransitionResult Field_markerTransition(
-        Match match,
+        MatchWrapper match,
         List<string> context,
         IStateBuilder next_state
     )
@@ -3075,7 +3105,7 @@ public class SpecializedBodyState : BodyState
     }
 
     protected virtual TransitionResult Option_markerTransition(
-        Match match,
+        MatchWrapper match,
         List<string> context,
         IStateBuilder next_state
     )
@@ -3084,7 +3114,7 @@ public class SpecializedBodyState : BodyState
     }
 
     protected override TransitionResult DoctestTransition(
-        Match match,
+        MatchWrapper match,
         List<string> context,
         IStateBuilder next_state
     )
@@ -3093,7 +3123,7 @@ public class SpecializedBodyState : BodyState
     }
 
     protected override TransitionResult LineBlockTransition(
-        Match match,
+        MatchWrapper match,
         List<string> context,
         IStateBuilder next_state
     )
@@ -3102,7 +3132,7 @@ public class SpecializedBodyState : BodyState
     }
 
     protected override TransitionResult ExplicitMarkupTransition(
-        Match match,
+        MatchWrapper match,
         List<string> context,
         IStateBuilder next_state
     )
@@ -3111,7 +3141,7 @@ public class SpecializedBodyState : BodyState
     }
 
     protected override TransitionResult AnonymousTransition(
-        Match match,
+        MatchWrapper match,
         List<string> context,
         IStateBuilder next_state
     )
@@ -3120,7 +3150,7 @@ public class SpecializedBodyState : BodyState
     }
 
     protected override TransitionResult LineTransition(
-        Match match,
+        MatchWrapper match,
         List<string> context,
         IStateBuilder next_state
     )
@@ -3129,7 +3159,7 @@ public class SpecializedBodyState : BodyState
     }
 
     protected override TransitionResult TextTransition(
-        Match match,
+        MatchWrapper match,
         List<string> context,
         IStateBuilder next_state
     )
@@ -3138,7 +3168,7 @@ public class SpecializedBodyState : BodyState
     }
 
     protected override TransitionResult BlankTransition(
-        Match match,
+        MatchWrapper match,
         List<string> context,
         IStateBuilder next_state
     )
@@ -3172,16 +3202,18 @@ public class BulletListState : SpecializedBodyState, IHaveBlankFinish
     public BulletListState(StateMachine sm) : base(sm) { }
 
     protected override TransitionResult BulletTransition(
-        Match match,
+        MatchWrapper match,
         List<string> context,
         IStateBuilder nextState
-    ) {
+    )
+    {
         // Bullet list item.
-        if (match.Value[0] != ((string)_parent!.Attributes["bullet"])[0]) {
+        if (match.Text[0] != ((string)_parent!.Attributes["bullet"])[0])
+        {
             // different bullet: new list
             InvalidInput(match, context, nextState);
         }
-        var (listitem, blank_finish) = HandleListItem(match.Index + match.Length);
+        var (listitem, blank_finish) = HandleListItem(match.Match.Index + match.Match.Length);
         _parent!.Add(listitem);
         BlankFinish = blank_finish;
         return new TransitionResult(new List<string>(), nextState);
@@ -3210,12 +3242,13 @@ public class DefinitionListState : SpecializedBodyState
     public DefinitionListState(StateMachine sm) : base(sm) { }
 
     protected override TransitionResult TextTransition(
-        Match match,
+        MatchWrapper match,
         List<string> context,
         IStateBuilder nextState
-    ) {
+    )
+    {
         // Definition lists.
-        return new TransitionResult(new List<string> { match.Value }, DefinitionState.Builder.Instance);
+        return new TransitionResult(new List<string> { match.Text }, DefinitionState.Builder.Instance);
     }
 
     public new class Builder : IStateBuilder
@@ -3238,12 +3271,14 @@ public class EnumeratedListState : SpecializedBodyState, IHaveBlankFinish
 {
     // Second and subsequent enumerated_list list_items.
 
-    public class EnumeratedListSettings {
+    public class EnumeratedListSettings
+    {
         public int LastOrdinal { get; set; }
         public string Format { get; set; }
         public bool Auto { get; set; }
 
-        public EnumeratedListSettings(int lastOrdinal, string format, bool auto) {
+        public EnumeratedListSettings(int lastOrdinal, string format, bool auto)
+        {
             LastOrdinal = lastOrdinal;
             Format = format;
             Auto = auto;
@@ -3256,10 +3291,11 @@ public class EnumeratedListState : SpecializedBodyState, IHaveBlankFinish
     public EnumeratedListState(StateMachine sm) : base(sm) { }
 
     protected override TransitionResult EnumeratorTransition(
-        Match match,
+        MatchWrapper match,
         List<string> context,
         IStateBuilder nextState
-    ) {
+    )
+    {
         // Enumerated list item.
         Debug.Assert(Settings is not null);
 
@@ -3278,14 +3314,16 @@ public class EnumeratedListState : SpecializedBodyState, IHaveBlankFinish
                 )
             )
             || !IsEnumeratedListItem(ordinal, sequence, format)
-        ) {
+        )
+        {
             // different enumeration: new list
             InvalidInput(match, context, nextState);
         }
-        if (sequence == "#") {
+        if (sequence == "#")
+        {
             Settings.Auto = true;
         }
-        var (listitem, blank_finish) = HandleListItem(match.Index + match.Length);
+        var (listitem, blank_finish) = HandleListItem(match.Match.Index + match.Match.Length);
         _parent.Add(listitem);
         BlankFinish = blank_finish;
         Settings.LastOrdinal = ordinal;
@@ -3316,10 +3354,11 @@ public class FieldListState : SpecializedBodyState, IHaveBlankFinish
 
 
     protected override TransitionResult FieldMarkerTransition(
-        Match match,
+        MatchWrapper match,
         List<string> context,
         IStateBuilder nextState
-    ) {
+    )
+    {
         // Field list field.
         var (field, blank_finish) = FieldHandler(match);
         _parent!.Add(field);
@@ -3351,16 +3390,20 @@ public class OptionListState : SpecializedBodyState, IHaveBlankFinish
     public OptionListState(StateMachine sm) : base(sm) { }
 
     protected override TransitionResult OptionMarkerTransition(
-        Match match,
+        MatchWrapper match,
         List<string> context,
         IStateBuilder nextState
-    ) {
+    )
+    {
         // Option list item.
         OptionListItem option_list_item;
         bool blank_finish;
-        try {
+        try
+        {
             (option_list_item, blank_finish) = HandleOptionListItem(match);
-        } catch (MarkupError) {
+        }
+        catch (MarkupError)
+        {
             InvalidInput(match, context, nextState);
             throw new UnreachableException();
         }
@@ -3387,10 +3430,11 @@ public class LineBlockState : SpecializedBodyState, IHaveBlankFinish
     public LineBlockState(StateMachine sm) : base(sm) { }
 
     protected override TransitionResult LineBlockTransition(
-        Match match,
+        MatchWrapper match,
         List<string> context,
         IStateBuilder nextState
-    ) {
+    )
+    {
         // New line of line block.
 
         var lineno = _stateMachine.AbsLineNumber();
@@ -3421,13 +3465,18 @@ public class ExtensionOptionsState : FieldListState
 
     public override void ParseFieldBody(
         StringList indented, int offset, Element node
-    ) {
+    )
+    {
         // Override `Body.parse_field_body` for simpler parsing.
         var lines = new List<string>();
-        foreach (var line in indented.Concat(new List<string> { "" })) {
-            if (line.Trim().Length > 0) {
+        foreach (var line in indented.Concat(new List<string> { "" }))
+        {
+            if (line.Trim().Length > 0)
+            {
                 lines.Add(line);
-            } else if (lines.Count > 0) {
+            }
+            else if (lines.Count > 0)
+            {
                 var text = String.Join('\n', lines);
                 node.Add(new Paragraph(text, text));
                 lines = new List<string>();
@@ -3468,7 +3517,8 @@ public class SubstitutionDefState : BodyState, IHaveBlankFinish
 
     public bool BlankFinish { get; set; } = false;
 
-    public SubstitutionDefState(StateMachine sm) : base(sm) {
+    public SubstitutionDefState(StateMachine sm) : base(sm)
+    {
         Transitions = new List<TransitionTuple> {
             new TransitionTuple("blank", SubstitutionDefState.BLANK_PAT, (match, context, nextState) => BlankTransition(match, context, nextState), GetStateBuilder()),
             new TransitionTuple("indent", SubstitutionDefState.INDENT_PAT, (match, context, nextState) => IndentTransition(match, context, nextState), GetStateBuilder()),
@@ -3479,26 +3529,30 @@ public class SubstitutionDefState : BodyState, IHaveBlankFinish
 
 
     public TransitionResult EmbeddedDirectiveTransition(
-        Match match,
+        MatchWrapper match,
         List<string> context,
         IStateBuilder nextState
-    ) {
+    )
+    {
         // XXX: docutils provided an "alt" option here
         var (nodelist, blank_finish) = HandleDirective(match);
         _parent!.AddRange(nodelist);
 
-        if (!_stateMachine.AtEof()) {
+        if (!_stateMachine.AtEof())
+        {
             BlankFinish = blank_finish;
         }
         throw new EOFError();
     }
 
     protected override TransitionResult TextTransition(
-        Match match,
+        MatchWrapper match,
         List<string> context,
         IStateBuilder nextState
-    ) {
-        if (!_stateMachine.AtEof()) {
+    )
+    {
+        if (!_stateMachine.AtEof())
+        {
             BlankFinish = _stateMachine.IsNextLineBlank();
         }
         throw new EOFError();
@@ -3525,7 +3579,8 @@ public class TextState : RSTState
     public static readonly RegexWrapper UNDERLINE_PAT = BodyState.Patterns.Line;
     public static readonly RegexWrapper TEXT_PAT = new RegexWrapper("");
 
-    public TextState(StateMachine sm) : base(sm) {
+    public TextState(StateMachine sm) : base(sm)
+    {
         Transitions = new List<TransitionTuple>{
             new TransitionTuple("blank", TextState.BLANK_PAT, (match, context, nextState) => BlankTransition(match, context, nextState), GetStateBuilder()),
             new TransitionTuple("indent", TextState.INDENT_PAT, (match, context, nextState) => IndentTransition(match, context, nextState), GetStateBuilder()),
@@ -3535,10 +3590,11 @@ public class TextState : RSTState
     }
 
     protected override TransitionResult BlankTransition(
-        Match? match,
+        MatchWrapper? match,
         List<string> context,
         IStateBuilder? nextState
-    ) {
+    )
+    {
         // End of paragraph.
         // NOTE: self.paragraph returns [ node, system_message(s) ], literalnext
 
@@ -3546,24 +3602,28 @@ public class TextState : RSTState
             context, _stateMachine.AbsLineNumber() - 1
         );
         _parent!.AddRange(paragraph);
-        if (literalnext) {
+        if (literalnext)
+        {
             _parent.AddRange(HandleLiteralBlock());
         }
         return new TransitionResult(new List<string>(), BodyState.Builder.Instance);
     }
 
-    public override List<string> Eof(List<string> context) {
-        if (context.Count > 0) {
+    public override List<string> Eof(List<string> context)
+    {
+        if (context.Count > 0)
+        {
             BlankTransition(null, context, null);
         }
         return new List<string>();
     }
 
     protected override TransitionResult IndentTransition(
-        Match match,
+        MatchWrapper match,
         List<string> context,
         IStateBuilder nextState
-    ) {
+    )
+    {
         // Definition list item.
         var definitionlist = new DefinitionList();
         var (definitionlistitem, blank_finish) = HandleDefinitionListItem(context);
@@ -3579,7 +3639,8 @@ public class TextState : RSTState
             blank_finish_state: DefinitionState.Builder.Instance
         );
         GotoLine(newline_offset);
-        if (!blank_finish) {
+        if (!blank_finish)
+        {
             _parent!.Add(UnindentWarning("Definition list"));
         }
         return new TransitionResult(new List<string>(), BodyState.Builder.Instance);
@@ -3587,21 +3648,25 @@ public class TextState : RSTState
 
 
     protected virtual TransitionResult UnderlineTransition(
-        Match match,
+        MatchWrapper match,
         List<string> context,
         IStateBuilder nextState
-    ) {
+    )
+    {
         // Section title.
 
         var lineno = _stateMachine.AbsLineNumber();
         var title = context[0].TrimEnd();
-        var underline = match.Value.TrimEnd();
+        var underline = match.Text.TrimEnd();
         var source = title + "\n" + underline;
         var messages = new List<SystemMessage>();
         string blocktext;
-        if (Util.ColumnWidth(title) > underline.Length) {
-            if (underline.Length < 4) {
-                if (((RSTStateMachine)_stateMachine).MatchTitles) {
+        if (Util.ColumnWidth(title) > underline.Length)
+        {
+            if (underline.Length < 4)
+            {
+                if (((RSTStateMachine)_stateMachine).MatchTitles)
+                {
                     var msg = _reporter!.Info(
                         "Possible title underline, too short for the title.\n" +
                         "Treating it as ordinary text because it's so short.",
@@ -3610,7 +3675,9 @@ public class TextState : RSTState
                     _parent!.Add(msg);
                 }
                 throw new TransitionCorrection("text");
-            } else {
+            }
+            else
+            {
                 blocktext = context[0] + "\n" + _stateMachine.Line;
                 var msg = _reporter!.Warning(
                     "Title underline too short.",
@@ -3619,7 +3686,8 @@ public class TextState : RSTState
                 messages.Add(msg);
             }
         }
-        if (!((RSTStateMachine)_stateMachine).MatchTitles) {
+        if (!((RSTStateMachine)_stateMachine).MatchTitles)
+        {
             blocktext = context[0] + "\n" + _stateMachine.Line;
             // We need get_source_and_line() here to report correctly
             var (src, srcline) = _stateMachine.GetSourceAndLine();
@@ -3642,17 +3710,21 @@ public class TextState : RSTState
     }
 
     protected virtual TransitionResult TextTransition(
-        Match match,
+        MatchWrapper match,
         List<string> context,
         IStateBuilder nextState
-    ) {
+    )
+    {
         // Paragraph.
         var startline = _stateMachine.AbsLineNumber() - 1;
         SystemMessage? msg = null;
         IEnumerable<string> block = Enumerable.Empty<string>();
-        try {
+        try
+        {
             block = _stateMachine.GetTextBlock(flush_left: true);
-        } catch (UnexpectedIndentationError err) {
+        }
+        catch (UnexpectedIndentationError err)
+        {
             // XXX this looks suspiciously broken in the original source: block is list()'d, but in this branch, never bound.
             msg = _reporter!.Error(
                 "Unexpected indentation.", line: err.SourceLine
@@ -3661,23 +3733,29 @@ public class TextState : RSTState
         var lines = context.Concat(block).ToList();
         var (paragraph, literalnext) = HandleParagraph(lines, startline);
         _parent!.AddRange(paragraph);
-        if (msg is not null) {
+        if (msg is not null)
+        {
             _parent.Add(msg);
         }
-        if (literalnext) {
-            try {
+        if (literalnext)
+        {
+            try
+            {
                 _stateMachine.NextLine();
-            } catch (EOFError) { }
+            }
+            catch (EOFError) { }
             _parent.AddRange(HandleLiteralBlock());
         }
         return new TransitionResult(new List<string>(), nextState);
     }
 
-    protected List<Node> HandleLiteralBlock() {
+    protected List<Node> HandleLiteralBlock()
+    {
         // Return a list of nodes.
 
         var (indented, indent, offset, blank_finish) = _stateMachine.GetIndented();
-        while (indented.Count > 0 && indented.Last().Trim().Length == 0) {
+        while (indented.Count > 0 && indented.Last().Trim().Length == 0)
+        {
             indented.TrimEnd();
         }
         var data = String.Join('\n', indented);
@@ -3686,13 +3764,15 @@ public class TextState : RSTState
         literal_block.Source = sourceAndLine.Item1;
         literal_block.Line = sourceAndLine.Item2;
         var nodelist = new List<Node> { literal_block };
-        if (!blank_finish) {
+        if (!blank_finish)
+        {
             nodelist.Add(UnindentWarning("Literal block"));
         }
         return nodelist;
     }
 
-    protected (DefinitionListItem, bool) HandleDefinitionListItem(List<string> termline) {
+    protected (DefinitionListItem, bool) HandleDefinitionListItem(List<string> termline)
+    {
         var (indented, indent, line_offset, blank_finish) = _stateMachine.GetIndented();
         var itemnode = new DefinitionListItem(String.Join('\n', termline.Concat(indented)));
         var lineno = _stateMachine.AbsLineNumber() - 1;
@@ -3704,7 +3784,8 @@ public class TextState : RSTState
         var definition = new Definition("");
         definition.AddRange(messages);
         itemnode.Add(definition);
-        if (termline[0].TakeLast(2).ToString() == "::") {
+        if (termline[0].TakeLast(2).ToString() == "::")
+        {
             definition.Add(
                 _reporter!.Info(
                     "Blank line missing before literal block (after the '::')? " +
@@ -3717,7 +3798,8 @@ public class TextState : RSTState
         return (itemnode, blank_finish);
     }
 
-    protected (List<Element>, List<SystemMessage>) HandleTerm(List<string> lines, int lineno) {
+    protected (List<Element>, List<SystemMessage>) HandleTerm(List<string> lines, int lineno)
+    {
         Debug.Assert(lines.Count == 1);
 
         var (text_nodes, messages) = InlineText(lines[0], lineno);
@@ -3726,10 +3808,14 @@ public class TextState : RSTState
         term_node.Source = sourceAndLine.Item1;
         term_node.Line = sourceAndLine.Item2;
         var node_list = new List<Element> { term_node };
-        for (int i = 0; i < text_nodes.Count; i += 1) {
-            if (text_nodes[i] is Text node) {
+        for (int i = 0; i < text_nodes.Count; i += 1)
+        {
+            if (text_nodes[i] is Text node)
+            {
                 node_list[^1].Add(node);
-            } else {
+            }
+            else
+            {
                 node_list[^1].Add(text_nodes[i]);
             }
         }
@@ -3755,7 +3841,8 @@ public class TextState : RSTState
 
 public class SpecializedTextState : TextState
 {
-    public SpecializedTextState(StateMachine sm) : base(sm) {
+    public SpecializedTextState(StateMachine sm) : base(sm)
+    {
         Transitions = new List<TransitionTuple>{
             new TransitionTuple("blank", BLANK_PAT, (match, context, nextState) => BlankTransition(match, context, nextState), GetStateBuilder()),
             new TransitionTuple("indent", INDENT_PAT, (match, context, nextState) => IndentTransition(match, context, nextState), GetStateBuilder()),
@@ -3764,13 +3851,14 @@ public class SpecializedTextState : TextState
         };
     }
 
-    public override List<string> Eof(List<string> context) {
+    public override List<string> Eof(List<string> context)
+    {
         // Incomplete construct.
         return new List<string>();
     }
 
     protected TransitionResult InvalidInput(
-        Match? match,
+        MatchWrapper? match,
         List<string> context,
         IStateBuilder? next_state
     )
@@ -3780,7 +3868,7 @@ public class SpecializedTextState : TextState
     }
 
     protected override TransitionResult BlankTransition(
-        Match? match,
+        MatchWrapper? match,
         List<string> context,
         IStateBuilder? next_state
     )
@@ -3789,7 +3877,7 @@ public class SpecializedTextState : TextState
     }
 
     protected override TransitionResult IndentTransition(
-        Match match,
+        MatchWrapper match,
         List<string> context,
         IStateBuilder next_state
     )
@@ -3798,7 +3886,7 @@ public class SpecializedTextState : TextState
     }
 
     protected override TransitionResult UnderlineTransition(
-        Match match,
+        MatchWrapper match,
         List<string> context,
         IStateBuilder next_state
     )
@@ -3807,7 +3895,7 @@ public class SpecializedTextState : TextState
     }
 
     protected override TransitionResult TextTransition(
-        Match match,
+        MatchWrapper match,
         List<string> context,
         IStateBuilder next_state
     )
@@ -3835,7 +3923,8 @@ public class DefinitionState : SpecializedTextState, IHaveBlankFinish
 {
     public bool BlankFinish { get; set; } = false;
 
-    public DefinitionState(StateMachine sm) : base(sm) {
+    public DefinitionState(StateMachine sm) : base(sm)
+    {
         Transitions = new List<TransitionTuple>{
             new TransitionTuple("blank", BLANK_PAT, (match, context, nextState) => BlankTransition(match, context, nextState), GetStateBuilder()),
             new TransitionTuple("indent", INDENT_PAT, (match, context, nextState) => IndentTransition(match, context, nextState), GetStateBuilder()),
@@ -3844,17 +3933,19 @@ public class DefinitionState : SpecializedTextState, IHaveBlankFinish
         };
     }
 
-    public override List<string> Eof(List<string> context) {
+    public override List<string> Eof(List<string> context)
+    {
         // Not a definition.
         _stateMachine.PreviousLine(2);  // so parent SM can reassess
         return new List<string>();
     }
 
     protected override TransitionResult IndentTransition(
-        Match match,
+        MatchWrapper match,
         List<string> context,
         IStateBuilder nextState
-    ) {
+    )
+    {
         // Definition list item.
         var (itemnode, blank_finish) = HandleDefinitionListItem(context);
         _parent!.Add(itemnode);
@@ -3883,7 +3974,8 @@ public class LineState : SpecializedTextState
     // Second line of over- & underlined section title or transition marker.
     private bool _eofcheck = true;  // @@@ ???
 
-    public LineState(StateMachine sm) : base(sm) {
+    public LineState(StateMachine sm) : base(sm)
+    {
         Transitions = new List<TransitionTuple>{
             new TransitionTuple("blank", BLANK_PAT, (match, context, nextState) => BlankTransition(match, context, nextState), GetStateBuilder()),
             new TransitionTuple("indent", INDENT_PAT, (match, context, nextState) => IndentTransition(match, context, nextState), GetStateBuilder()),
@@ -3892,16 +3984,21 @@ public class LineState : SpecializedTextState
         };
     }
 
-    public override List<string> Eof(List<string> context) {
+    public override List<string> Eof(List<string> context)
+    {
         // Transition marker at end of section or document.
         var marker = context[0].Trim();
-        if (_memo!.SectionBubbleUpKludge) {
+        if (_memo!.SectionBubbleUpKludge)
+        {
             _memo.SectionBubbleUpKludge = false;
-        } else if (marker.Length < 4) {
+        }
+        else if (marker.Length < 4)
+        {
             StateCorrection(context);
         }
 
-        if (_eofcheck) {  // ignore EOFError with sections
+        if (_eofcheck)
+        {  // ignore EOFError with sections
             var (src, srcline) = _stateMachine.GetSourceAndLine();
             // lineno = _stateMachine.AbsLineNumber() - 1
             var transition = new Transition(context[0]);
@@ -3915,15 +4012,17 @@ public class LineState : SpecializedTextState
     }
 
     protected override TransitionResult BlankTransition(
-        Match? match,
+        MatchWrapper? match,
         List<string> context,
         IStateBuilder? nextState
-    ) {
+    )
+    {
         // Transition marker.
 
         var (src, srcline) = _stateMachine.GetSourceAndLine();
         var marker = context[0].Trim();
-        if (marker.Length < 4) {
+        if (marker.Length < 4)
+        {
             StateCorrection(context);
         }
         var transition = new Transition(marker);
@@ -3934,23 +4033,30 @@ public class LineState : SpecializedTextState
     }
 
     protected override TransitionResult TextTransition(
-        Match match,
+        MatchWrapper match,
         List<string> context,
         IStateBuilder nextState
-    ) {
+    )
+    {
         // Potential over- & underlined title.
 
         var lineno = _stateMachine.AbsLineNumber() - 1;
         var overline = context[0];
-        var title = match.Value;
+        var title = match.Text;
         var underline = "";
-        try {
+        try
+        {
             underline = _stateMachine.NextLine();
-        } catch (EOFError) {
+        }
+        catch (EOFError)
+        {
             var blocktext = overline + "\n" + title;
-            if (overline.TrimEnd().Length < 4) {
+            if (overline.TrimEnd().Length < 4)
+            {
                 HandleShortOverline(context, blocktext, lineno, 2);
-            } else {
+            }
+            else
+            {
                 var msg = _reporter!.Severe(
                     "Incomplete section title.",
                     line: lineno
@@ -3962,13 +4068,17 @@ public class LineState : SpecializedTextState
         var source = $"{overline}\n{title}\n{underline}";
         overline = overline.TrimEnd();
         underline = underline.TrimEnd();
-        var underlineMatch = Transitions.Where(x => x.Name == "underline").First().Pattern.RegexAnchoredAtStart.Match(underline);
+        var underlineMatch = Transitions.Where(x => x.Name == "underline").First().Pattern.MatchAnchored(underline);
         // if not self.transitions["underline"][0].match(underline):
-        if (!underlineMatch.Success || underlineMatch.Index > 0) {
+        if (!underlineMatch.Match.Success || underlineMatch.Match.Index > 0)
+        {
             var blocktext = overline + "\n" + title + "\n" + underline;
-            if (overline.TrimEnd().Length < 4) {
+            if (overline.TrimEnd().Length < 4)
+            {
                 HandleShortOverline(context, blocktext, lineno, 2);
-            } else {
+            }
+            else
+            {
                 var msg = _reporter!.Severe(
                     "Missing matching underline for section title overline.",
                     line: lineno
@@ -3976,11 +4086,16 @@ public class LineState : SpecializedTextState
                 _parent!.Add(msg);
                 return new TransitionResult(new List<string>(), BodyState.Builder.Instance);
             }
-        } else if (overline != underline) {
+        }
+        else if (overline != underline)
+        {
             var blocktext = overline + "\n" + title + "\n" + underline;
-            if (overline.TrimEnd().Length < 4) {
+            if (overline.TrimEnd().Length < 4)
+            {
                 HandleShortOverline(context, blocktext, lineno, 2);
-            } else {
+            }
+            else
+            {
                 var msg = _reporter!.Severe(
                     "Title overline & underline mismatch.",
                     line: lineno
@@ -3991,11 +4106,15 @@ public class LineState : SpecializedTextState
         }
         title = title.TrimEnd();
         var messages = new List<SystemMessage>();
-        if (Util.ColumnWidth(title) > overline.Length) {
+        if (Util.ColumnWidth(title) > overline.Length)
+        {
             var blocktext = overline + "\n" + title + "\n" + underline;
-            if (overline.TrimEnd().Length < 4) {
+            if (overline.TrimEnd().Length < 4)
+            {
                 HandleShortOverline(context, blocktext, lineno, 2);
-            } else {
+            }
+            else
+            {
                 var msg = _reporter!.Warning(
                     "Title overline too short.",
                     line: lineno
@@ -4012,22 +4131,25 @@ public class LineState : SpecializedTextState
 
     // indented title
     protected override TransitionResult IndentTransition(
-        Match match,
+        MatchWrapper match,
         List<string> context,
         IStateBuilder nextState
-    ) {
+    )
+    {
         return TextTransition(match, context, nextState);
     }
 
     protected override TransitionResult UnderlineTransition(
-        Match match,
+        MatchWrapper match,
         List<string> context,
         IStateBuilder nextState
-    ) {
+    )
+    {
         var overline = context[0];
         var blocktext = overline + "\n" + _stateMachine.Line;
         var lineno = _stateMachine.AbsLineNumber() - 1;
-        if (overline.TrimEnd().Length < 4) {
+        if (overline.TrimEnd().Length < 4)
+        {
             HandleShortOverline(context, blocktext, lineno, 1);
         }
         var msg = _reporter!.Error(
@@ -4040,7 +4162,8 @@ public class LineState : SpecializedTextState
 
     private void HandleShortOverline(
         List<string> context, string blocktext, int lineno, int lines = 1
-    ) {
+    )
+    {
         var msg = _reporter!.Info(
             "Possible incomplete section title.\nTreating the overline as " +
             "ordinary text because it's so short.",
@@ -4050,7 +4173,8 @@ public class LineState : SpecializedTextState
         StateCorrection(context, lines);
     }
 
-    private void StateCorrection(List<string> context, int lines = 1) {
+    private void StateCorrection(List<string> context, int lines = 1)
+    {
         _stateMachine.PreviousLine(lines);
         context.Clear();
         throw new StateCorrection(BodyState.Builder.Instance, "text");

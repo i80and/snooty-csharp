@@ -1,14 +1,16 @@
 namespace tinydocutils;
 
-public class Parser {
+public class Parser
+{
     // The reStructuredText parser.
 
     private IStateBuilder _initialState = BodyState.Builder.Instance;
     private Inliner _inliner = new Inliner();
 
-    public Parser() {}
+    public Parser() { }
 
-    public void Parse(string inputstring, Document document) {
+    public void Parse(string inputstring, Document document)
+    {
         var statemachine = new RSTStateMachine(
             new StateConfiguration(
                 RSTState.STATE_CLASSES, _initialState

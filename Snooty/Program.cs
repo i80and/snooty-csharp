@@ -127,26 +127,53 @@ class MainClass
 {
     static public void Main(string[] args)
     {
-        var stopwatch = new Stopwatch();
-        stopwatch.Start();
-        for (int i = 0; i < 10000; i += 1) {
-            var document = tinydocutils.Document.New("foo.rst", new tinydocutils.OptionParser());
-            var parser = new tinydocutils.Parser();
-            parser.Parse("\n" + """
-    :template: product-landing
-    :hidefeedback: header
-    :noprevnext:
+        //     var stopwatch = new Stopwatch();
+        //     stopwatch.Start();
+        //     for (int i = 0; i < 10000; i += 1) {
+        //         var document = tinydocutils.Document.New("foo.rst", new tinydocutils.OptionParser());
+        //         var parser = new tinydocutils.Parser();
+        //         parser.Parse("\n" + """
+        // :template: product-landing
+        // :hidefeedback: header
+        // :noprevnext:
 
-    ================
-    What is MongoDB?
-    ================
+        // ================
+        // What is MongoDB?
+        // ================
 
-    This is a test.
-    """, document);
-        }
+        // This is a test.
+        // """, document);
+        //     }
 
-        stopwatch.Stop();
-        Console.WriteLine((double)(stopwatch.ElapsedMilliseconds) / 1000.0);
+        //     stopwatch.Stop();
+        //     Console.WriteLine((double)(stopwatch.ElapsedMilliseconds) / 1000.0);
+
+
+        var document = tinydocutils.Document.New("foo.rst", new tinydocutils.OptionParser());
+        var parser = new tinydocutils.Parser();
+        parser.Parse(
+        """
+        :template: product-landing
+        :hidefeedback: header
+        :noprevnext:
+
+        ================
+        What is MongoDB?
+        ================
+
+        .. |arrow| unicode:: U+27A4
+
+        This is a test. |arrow| Use the **Select your language** drop-down menu in the list.
+
+        * - Introduction
+
+            An introduction to things.
+          - Developers
+          - Administrators
+          - Reference
+        """, document);
+
+        Console.WriteLine(document.ToString());
         //     var projectConfig = new ProjectConfig("/home/heli/work/docs-mongodb-internal/");
         //     var targetDatabase = new TargetDatabase();
         //     var cancellationToken = new CancellationToken();

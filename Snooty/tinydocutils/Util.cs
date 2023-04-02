@@ -295,7 +295,8 @@ public sealed partial class Util
         return options;
     }
 
-    public static int ColumnWidth(string text) {
+    public static int ColumnWidth(string text)
+    {
         return new StringInfo(text).LengthInTextElements;
     }
 
@@ -305,7 +306,8 @@ public sealed partial class Util
     [GeneratedRegex("""^[0-9]+$""", RegexOptions.IgnoreCase)]
     private static partial Regex DIGITS();
 
-    public static string UnicodeCode(string code) {
+    public static string UnicodeCode(string code)
+    {
         // Convert a Unicode character code to a Unicode character.
         // (Directive option conversion function.)
 
@@ -315,22 +317,32 @@ public sealed partial class Util
 
         // Raise ArgumentException for illegal Unicode code values.
 
-        try {
-            if (DIGITS().IsMatch(code)) {  // decimal number
+        try
+        {
+            if (DIGITS().IsMatch(code))
+            {  // decimal number
                 return ((Rune)Int32.Parse(code)).ToString();
-            } else {
+            }
+            else
+            {
                 var match = UNICODE_PATTERN().Match(code);
-                if (match.Success) {   // hex number
+                if (match.Success)
+                {   // hex number
                     var value = match.Groups[1].Value;
-                    if (value.Length == 0) {
+                    if (value.Length == 0)
+                    {
                         value = match.Groups[2].Value;
                     }
                     return ((Rune)(Int32.Parse(value, System.Globalization.NumberStyles.HexNumber))).ToString();
-                } else {  // other text
+                }
+                else
+                {  // other text
                     throw new ArgumentException($"Unknown Unicode character '{code}'");
                 }
             }
-        } catch (OverflowException detail) {
+        }
+        catch (OverflowException detail)
+        {
             throw new ArgumentException($"code too large ({detail})");
         }
     }

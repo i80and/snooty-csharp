@@ -71,7 +71,8 @@ public sealed class StringList : IEnumerable<string>
         }
     }
 
-    public override string ToString() {
+    public override string ToString()
+    {
         return $"StringList([{String.Join(", ", Data.Select(part => $"\"{part}\""))}])";
     }
 
@@ -128,7 +129,8 @@ public sealed class StringList : IEnumerable<string>
 
     public (string?, int?) Info(int i)
     {
-        if (i < 0 || i >= Items.Count) {
+        if (i < 0 || i >= Items.Count)
+        {
             if (i == Data.Count)
             {
                 return (Items[i - 1].Item1, null);
@@ -361,7 +363,7 @@ public sealed class StringList : IEnumerable<string>
     }
 }
 
-public record TransitionTuple(string Name, RegexWrapper Pattern, Func<Match, List<string>, IStateBuilder, TransitionResult> Method, IStateBuilder NextState);
+public record TransitionTuple(string Name, RegexWrapper Pattern, Func<MatchWrapper, List<string>, IStateBuilder, TransitionResult> Method, IStateBuilder NextState);
 
 public interface IStateBuilder
 {
@@ -502,10 +504,13 @@ public class StateMachine
         try
         {
             LineOffset += n;
-            if (LineOffset < 0 || LineOffset >= InputLines!.Count) {
+            if (LineOffset < 0 || LineOffset >= InputLines!.Count)
+            {
                 Line = null;
                 throw new EOFError();
-            } else {
+            }
+            else
+            {
                 Line = InputLines![LineOffset];
                 return Line;
             }
@@ -530,7 +535,8 @@ public class StateMachine
         }
     }
 
-    public bool AtEof() {
+    public bool AtEof()
+    {
         // Return 1 if the input is at or past end-of-file.
         return LineOffset >= (InputLines!.Count - 1);
     }
@@ -617,16 +623,17 @@ public class StateMachine
         if (correctTransition is null)
         {
             _t = state.Transitions;
-        } else {
+        }
+        else
+        {
             _t = new List<TransitionTuple> { state.Transitions.Where(x => x.Name == correctTransition).First() };
         }
 
         foreach (var transition in _t)
         {
             Debug.Assert(Line is not null);
-            var match = transition.Pattern.RegexAnchoredAtStart.Match(Line);
-            // Console.WriteLine("{0}, {1}, {2}", name, Line, match.Success);
-            if (match.Success)
+            var match = transition.Pattern.MatchAnchored(Line);
+            if (match.Match.Success)
             {
                 return transition.Method(match, context, transition.NextState);
             }
@@ -652,9 +659,12 @@ public class StateMachine
     {
         string? source;
         int? lineno;
-        try {
+        try
+        {
             (source, lineno) = InputLines!.Info(LineOffset);
-        } catch (ArgumentOutOfRangeException) {
+        }
+        catch (ArgumentOutOfRangeException)
+        {
             source = null;
             lineno = null;
         }
@@ -797,7 +807,7 @@ public class State
     }
 
     public virtual TransitionResult NopTransition(
-        Match match, List<string> context, IStateBuilder nextState)
+        MatchWrapper match, List<string> context, IStateBuilder nextState)
     {
         // A "do nothing" transition method.
 
