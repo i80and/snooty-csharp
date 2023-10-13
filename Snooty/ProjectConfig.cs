@@ -4,9 +4,9 @@ public class ProjectConfig
 {
     public string root;
     public string source = "source";
-    public string[] intersphinx = new string[] { };
-    public List<ParsedBannerConfig> banner_nodes = new List<ParsedBannerConfig>();
-    public Dictionary<string, List<N.InlineNode>> substitution_nodes = new Dictionary<string, List<N.InlineNode>>();
+    public string[] intersphinx = Array.Empty<string>();
+    public List<ParsedBannerConfig> banner_nodes = new();
+    public Dictionary<string, List<N.InlineNode>> substitution_nodes = new();
 
     public ProjectConfig(string r)
     {

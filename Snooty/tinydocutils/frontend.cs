@@ -1,5 +1,6 @@
 namespace tinydocutils;
 
+
 using RoleFunctionType = Func<string, string, string, int, Inliner, (List<Node>, List<SystemMessage>)>;
 
 public enum Thresholds
@@ -20,24 +21,9 @@ public class OptionParser
 
     public Dictionary<string, string?> settings { get; set; } = new Dictionary<string, string?>();
 
-    private Dictionary<string, IDirective> _directives = new Dictionary<string, IDirective>();
+    public Func<string, RoleFunctionType?> LookupRole = (roleName) => { throw new Exception(); };
+    public Func<string, IDirective?> LookupDirective = (name) => { throw new Exception(); };
 
-    public (RoleFunctionType?, List<SystemMessage>) LookupRole(string role_name, int lineno, Reporter reporter)
-    {
-        throw new Exception();
-    }
-
-    public IDirective? LookupDirective(string name)
-    {
-        try
-        {
-            return _directives[name];
-        }
-        catch (KeyNotFoundException)
-        {
-            return null;
-        }
-    }
 
     public int halt_level { get; set; } = 5;
     public int report_level { get; set; } = 1;

@@ -1474,12 +1474,12 @@ class RefsHandler : Handler
         if (target_candidates.Count == 0)
         {
             var line = node.Span.Start;
-            var target_dict = _spec.rstobject;
+            var target_dict = _spec.Rstobject;
             var target_key = $"{node.Domain}:{node.Name}";
             var title = node.Target;
-            if (target_dict.ContainsKey(target_key) && !string.IsNullOrEmpty(target_dict[target_key].prefix))
+            if (target_dict.ContainsKey(target_key) && !string.IsNullOrEmpty(target_dict[target_key].Prefix))
             {
-                title = title?.Replace($"{target_dict[target_key].prefix}.", "");
+                title = title?.Replace($"{target_dict[target_key].Prefix}.", "");
             }
             var text_node = new N.Text(node.Span, title);
             var injection_candidate = PostprocessorUtils.GetTitleInjectionCandidate<N.InlineParent>(node);

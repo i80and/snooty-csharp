@@ -598,7 +598,8 @@ public class Inliner
     )
     {
         Debug.Assert(_reporter is not null);
-        var (role_fn, messages) = _document!.Settings.LookupRole(role, lineno, _reporter);
+        var role_fn = _document!.Settings.LookupRole(role);
+        var messages = new List<SystemMessage>();
         if (role_fn is not null)
         {
             var (nodes, messages2) = role_fn(role, rawsource, text, lineno, this);
@@ -972,7 +973,7 @@ public abstract class RSTState : tinydocutils.State
     protected readonly static RegexWrapper INDENT_PAT = new RegexWrapper(" +");
 
     protected Element? _parent;
-    protected Document? _document;
+    public Document? Document;
     protected Inliner? _inliner;
     protected Reporter? _reporter;
     protected StateMachineMemo? _memo;
@@ -1000,7 +1001,7 @@ public abstract class RSTState : tinydocutils.State
         _memo = memo;
         _reporter = memo.Reporter;
         _inliner = memo.Inliner;
-        _document = memo.Document;
+        Document = memo.Document;
         _parent = sm.Node;
         // enable the reporter to determine source and source-line
         if (_reporter.GetSourceAndLine is null)
@@ -1221,7 +1222,7 @@ public abstract class RSTState : tinydocutils.State
         section_node.Add(titlenode);
         section_node.AddRange(messages);
         section_node.AddRange(title_messages);
-        _document!.NoteImplicitTarget(section_node, section_node);
+        Document!.NoteImplicitTarget(section_node, section_node);
 
         var offset = _stateMachine.LineOffset + 1;
         var absoffset = _stateMachine.AbsLineOffset() + 1;
@@ -1284,7 +1285,7 @@ public abstract class RSTState : tinydocutils.State
         return (result, literalnext);
     }
 
-    protected (List<Node>, List<SystemMessage>) InlineText(
+    public (List<Node>, List<SystemMessage>) InlineText(
         string text, int lineno
     )
     {
@@ -2098,7 +2099,7 @@ public class BodyState : RSTState
             var target = new Target(block_text, "");
             target.Attributes["refname"] = Util.FullyNormalizeName(data);
             AddTarget(target_name, "", target, lineno);
-            _document!.NoteIndirectTarget(target);
+            Document!.NoteIndirectTarget(target);
             return target;
         }
         else if (target_type == "refuri")
@@ -2178,7 +2179,7 @@ public class BodyState : RSTState
                 }
             }
             Debug.Assert(_parent is not null);
-            _document!.NoteExplicitTarget(target, _parent);
+            Document!.NoteExplicitTarget(target, _parent);
         }
         else
         {  // anonymous target
@@ -2187,7 +2188,7 @@ public class BodyState : RSTState
                 target.Attributes["refuri"] = refuri;
             }
             target.Attributes["anonymous"] = true;
-            _document!.NoteAnonymousTarget(target);
+            Document!.NoteAnonymousTarget(target);
         }
     }
 
@@ -2499,27 +2500,27 @@ public class BodyState : RSTState
             {
                 footnote.Names.Add(name);
             }
-            _document!.NoteAutofootnote(footnote);
+            Document!.NoteAutofootnote(footnote);
         }
         else if (name == "*")
         {  // auto-symbol
             name = "";
             footnote.Attributes["auto"] = "*";
-            _document!.NoteSymbolFootnote(footnote);
+            Document!.NoteSymbolFootnote(footnote);
         }
         else
         {  // manually numbered
             footnote.Add(new Label("", label));
             footnote.Names.Add(name);
-            _document!.NoteFootnote(footnote);
+            Document!.NoteFootnote(footnote);
         }
         if (name.Length > 0)
         {
-            _document!.NoteExplicitTarget(footnote, footnote);
+            Document!.NoteExplicitTarget(footnote, footnote);
         }
         else
         {
-            _document!.SetId(footnote, footnote);
+            Document!.SetId(footnote, footnote);
         }
         if (indented.Count > 0)
         {
@@ -2544,8 +2545,8 @@ public class BodyState : RSTState
         citation.Line = srcline;
         citation.Add(new Label("", label));
         citation.Names.Add(name);
-        _document!.NoteCitation(citation);
-        _document!.NoteExplicitTarget(citation, citation);
+        Document!.NoteCitation(citation);
+        Document!.NoteExplicitTarget(citation, citation);
         if (indented.Count > 0)
         {
             NestedParse(indented, input_offset: offset, node: citation);
@@ -2722,8 +2723,8 @@ public class BodyState : RSTState
     {
         // Returns a 2-tuple: list of nodes, and a "blank finish" boolean.
         var type_name = match.Match.Groups[1].Value;
-        Debug.Assert(_document is not null);
-        var directive_class = _document.Settings.LookupDirective(type_name);
+        Debug.Assert(Document is not null);
+        var directive_class = Document.Settings.LookupDirective(type_name);
         if (directive_class is not null)
         {
             return RunDirective(directive_class, match, type_name, new Dictionary<string, object>());

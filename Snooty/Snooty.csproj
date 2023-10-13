@@ -7,4 +7,9 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
+  <ItemGroup>
+    <PackageReference Include="StreamJsonRpc" Version="2.16.36" />
+    <PackageReference Include="Tomlyn" Version="0.16.2" />
+  </ItemGroup>
+
 </Project>

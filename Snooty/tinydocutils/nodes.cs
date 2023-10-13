@@ -148,9 +148,8 @@ public class Element : Node, IEnumerable<Node>
 {
     public override string RawSource { get; set; }
     public List<Node> Children { get; set; } = new List<Node>();
-    public List<string> Ids { get; init; } = new List<string>();
+    public List<string> Ids { get; set; } = new List<string>();
     public List<string> Names = new List<string>();
-    public List<string> DupNames = new List<string>();
 
     public Element(string rawsource = "")
     {
@@ -220,12 +219,6 @@ public class Element : Node, IEnumerable<Node>
     IEnumerator IEnumerable.GetEnumerator()
     {
         return GetEnumerator();
-    }
-
-    public void DupName(string name)
-    {
-        DupNames.Add(name);
-        Names.Remove(name);
     }
 
     public virtual string ChildTextSeperator { get => "\n\n"; }
@@ -480,7 +473,6 @@ public class Document : Element
                     }
                     if ((int)level > 1)
                     {
-                        old_node.DupName(name);
                         NameIds[name] = null;
                     }
                 }
@@ -492,7 +484,6 @@ public class Document : Element
                 {
                     msgnode.Add(msg);
                 }
-                node.DupName(name);
             }
             else
             {
@@ -500,7 +491,6 @@ public class Document : Element
                 if (old_id is not null)
                 {
                     var old_node = IdToElement[old_id];
-                    old_node.DupName(name);
                 }
             }
         }
@@ -510,9 +500,7 @@ public class Document : Element
             {
                 NameIds[name] = null;
                 var old_node = IdToElement[old_id!];
-                old_node.DupName(name);
             }
-            node.DupName(name);
         }
         if (!isExplicit || (!old_explicit && old_id is not null))
         {
@@ -969,4 +957,85 @@ public class SubstitutionReference : TextElement, IInline
     public static readonly Func<string, string, SubstitutionReference> Make = (rawsource, text) => new SubstitutionReference(rawsource, text);
 
     public SubstitutionReference(string rawsource, string text) : base(rawsource, text) { }
+}
+
+
+/////////////////////
+// Snooty Elements //
+/////////////////////
+
+
+public class DirectiveArgument : TextElement, IGeneral
+{
+    public DirectiveArgument(string source, string rawsource) : base(source, rawsource) { }
+}
+
+
+/// Docutils node representing the title which should be used for refs to this node's
+/// parent target, if no explicit title is given.
+public class TargetIdentifier : TextElement, IInline { }
+
+
+public class Directive : Element, IGeneral
+{
+    public string Domain;
+    public string Name;
+    public Dictionary<string, object> Options;
+
+    public Directive(string domain, string name) : base()
+    {
+        Domain = domain;
+        Name = name;
+        Options = new Dictionary<string, object>();
+    }
+
+    public static readonly Func<string, string, Directive> Make = (domain, name) => new Directive(domain, name);
+}
+
+
+// Docutils node representing a named target which can be referenced by the ref_role node.
+public class TargetDirective : Directive
+{
+    public TargetDirective(string domain, string name) : base(domain, name) { }
+
+    public new static readonly Func<string, string, TargetDirective> Make = (domain, name) => new TargetDirective(domain, name);
+}
+
+
+public class Code : FixedTextElement, IGeneral
+{
+    public string? Lang;
+    public string? Caption;
+    public bool Copyable;
+    public List<(int, int)>? EmphasizeLines = null;
+    public bool Linenos;
+
+    public Code(string text) : base(text, text) { }
+}
+
+
+/// Docutils node representing a role.
+public class Role : Element, IInline
+{
+    public string Domain;
+    public string Name;
+    public string? Target;
+
+    public Role(string domain, string name, string? target) : base()
+    {
+        Domain = domain;
+        Name = name;
+
+        if (target is not null)
+        {
+            Target = target;
+        }
+    }
+}
+
+
+/// Docutils node representing a reference to a reStructuredText target.
+public class RefRole : Role
+{
+    public RefRole(string domain, string name, string? target) : base(domain, name, target) { }
 }

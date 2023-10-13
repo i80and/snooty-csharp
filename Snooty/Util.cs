@@ -7,7 +7,7 @@ public class PosixPath : IEquatable<PosixPath>
 
     public PosixPath()
     {
-        _parts = new string[] { };
+        _parts = Array.Empty<string>();
     }
 
     public PosixPath(string path)
@@ -20,7 +20,7 @@ public class PosixPath : IEquatable<PosixPath>
         _parts = parts.ToArray();
     }
 
-    public String GetName()
+    public string GetName()
     {
         return _parts[^1];
     }
@@ -44,6 +44,16 @@ public class PosixPath : IEquatable<PosixPath>
     public bool Equals(PosixPath? other)
     {
         return other != null && _parts.SequenceEqual(other._parts);
+    }
+
+    public override bool Equals(object? other)
+    {
+        if (other is PosixPath path)
+        {
+            return this == path;
+        }
+
+        return false;
     }
 
     public override int GetHashCode()
@@ -171,7 +181,7 @@ class Util
 
     public class Counter<T> where T : notnull
     {
-        private Dictionary<T, int> _counters = new Dictionary<T, int>();
+        private readonly Dictionary<T, int> _counters = new();
 
         public void Clear()
         {
@@ -253,7 +263,7 @@ class Util
 
     public class SimpleCache<T>
     {
-        private ThreadLocal<Dictionary<string, T>> _cache = new ThreadLocal<Dictionary<string, T>>(() => new Dictionary<string, T>());
+        private readonly ThreadLocal<Dictionary<string, T>> _cache = new(() => new Dictionary<string, T>());
         public SimpleCache() { }
 
         public T Get(string arg, Func<T> f)
@@ -273,7 +283,7 @@ class Util
         }
     }
 
-    private static readonly SimpleCache<Regex> GLOB_CACHE = new SimpleCache<Regex>();
+    private static readonly SimpleCache<Regex> GLOB_CACHE = new();
 
     public static bool GlobMatches(string s, string glob)
     {
@@ -302,6 +312,21 @@ class Util
             }
         }
         return true;
+    }
+
+    /// Split a fully-qualified reStructuredText directive or role name into
+    /// its (domain, name) pair.
+    ///
+    /// For example, "mongodb:ref" becomes ("mongodb", "ref"), while simply
+    /// "ref" becomes ("", "ref").
+    public static (string, string) SplitDomain(string name)
+    {
+        var parts = name.Split(":", 1);
+        if (parts.Length == 1)
+        {
+            return ("", parts[0]);
+        }
+        return (parts[0], parts[1]);
     }
 }
 
