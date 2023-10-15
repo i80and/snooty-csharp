@@ -14,15 +14,13 @@ public enum Thresholds
 
 public class OptionParser
 {
-    public const bool character_level_inline_markup = false;
-
     public object? components { get; set; }
     public bool debug { get; set; } = false;
 
     public Dictionary<string, string?> settings { get; set; } = new Dictionary<string, string?>();
 
     public Func<string, RoleFunctionType?> LookupRole = (roleName) => { throw new Exception(); };
-    public Func<string, IDirective?> LookupDirective = (name) => { throw new Exception(); };
+    public Func<string, DirectiveDefinition?> LookupDirective = (name) => { throw new Exception(); };
 
 
     public int halt_level { get; set; } = 5;

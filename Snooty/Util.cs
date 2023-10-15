@@ -328,6 +328,11 @@ class Util
         }
         return (parts[0], parts[1]);
     }
+
+    public static IEnumerable<T> SingleEnumerable<T>(T value)
+    {
+        yield return value;
+    }
 }
 
 public static class Extensions

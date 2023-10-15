@@ -7,20 +7,23 @@ using tinydocutils;
 /// We need to ensure that these are both included in the `argument` field of the AST, and that
 /// subsequent indented directives are included as children of the node.
 
-class BaseVersionDirective : IDirective
+class BaseVersionDirective
 {
-    public virtual int RequiredArguments { get { return 1; } }
-    public virtual int OptionalArguments { get { return 1; } }
+    public static DirectiveDefinition Make()
+    {
+        return new DirectiveDefinition
+        {
+            RequiredArguments = 1,
+            OptionalArguments = 1,
+            FinalArgumentWhitespace = false,
+            HasContent = true,
+            OptionSpec = new(),
+            Run = Run
+        };
+    }
 
-    public virtual bool FinalArgumentWhitespace { get; }
-
-    public virtual Dictionary<string, Func<string?, object>> OptionSpec { get { return new Dictionary<string, Func<string?, object>>(); } }
-
-    public virtual bool HasContent { get { return true; } }
-
-    public BaseVersionDirective() { }
-
-    public List<Node> Run(
+    public static List<Node> Run(
+        DirectiveDefinition directiveDefinition,
         string name,
         List<string> arguments,
         Dictionary<string, object> options,
@@ -71,6 +74,17 @@ class BaseVersionDirective : IDirective
 /// require an argument.
 class DeprecatedVersionDirective : BaseVersionDirective
 {
-    public override int RequiredArguments { get { return 0; } }
-    public override int OptionalArguments { get { return 1; } }
+
+    public new static DirectiveDefinition Make()
+    {
+        return new DirectiveDefinition
+        {
+            RequiredArguments = 0,
+            OptionalArguments = 1,
+            FinalArgumentWhitespace = false,
+            HasContent = true,
+            OptionSpec = new(),
+            Run = Run
+        };
+    }
 }

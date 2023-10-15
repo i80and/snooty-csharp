@@ -34,24 +34,25 @@ public class DirectiveError : Exception
     }
 }
 
-public interface IDirective
+public record class DirectiveDefinition
 {
     // Number of required directive arguments.
-    public int RequiredArguments { get; }
+    public int RequiredArguments { get; init; } = 0;
 
     // Number of optional arguments after the required arguments.
-    public int OptionalArguments { get; }
+    public int OptionalArguments { get; init; } = 0;
 
     // May the final argument contain whitespace?
-    public bool FinalArgumentWhitespace { get; }
+    public bool FinalArgumentWhitespace { get; init; } = false;
 
     // Mapping of option names to validator functions.
-    public Dictionary<string, Func<string?, object>> OptionSpec { get; }
+    public required Dictionary<string, Func<string, object>> OptionSpec { get; init; }
 
     // May the directive have content?
-    public bool HasContent { get; }
+    public bool HasContent { get; init; } = false;
 
-    public List<Node> Run(
+    public delegate List<Node> RunPrototype(
+        DirectiveDefinition definition,
         string name,
         List<string> arguments,
         Dictionary<string, object> options,
@@ -62,18 +63,27 @@ public interface IDirective
         RSTState state,
         RSTStateMachine state_machine
     );
+    public required RunPrototype Run;
 }
 
 
-public class ReplaceDirective : IDirective
+public class ReplaceDirective
 {
-    public int RequiredArguments { get => 0; }
-    public int OptionalArguments { get => 0; }
-    public bool FinalArgumentWhitespace { get => false; }
-    public Dictionary<string, Func<string?, object>> OptionSpec { get => new Dictionary<string, Func<string?, object>>(); }
-    public bool HasContent { get => true; }
+    public static DirectiveDefinition Make()
+    {
+        return new DirectiveDefinition
+        {
+            RequiredArguments = 0,
+            OptionalArguments = 0,
+            FinalArgumentWhitespace = false,
+            HasContent = true,
+            OptionSpec = new(),
+            Run = Run
+        };
+    }
 
-    public List<Node> Run(
+    public static List<Node> Run(
+            DirectiveDefinition definition,
             string name,
             List<string> arguments,
             Dictionary<string, object> options,
@@ -129,7 +139,7 @@ public class ReplaceDirective : IDirective
     }
 }
 
-public partial class UnicodeDirective : IDirective
+public partial class UnicodeDirective
 {
     // Convert Unicode character codes (numbers) to characters.  Codes may be
     // decimal numbers, hexadecimal numbers (prefixed by ``0x``, ``x``, ``\x``,
@@ -137,19 +147,30 @@ public partial class UnicodeDirective : IDirective
     // entities (e.g. ``&#x262E;``).  Text following ".." is a comment and is
     // ignored.  Spaces are ignored, and any other text remains as-is.
 
-    public int RequiredArguments { get => 1; }
-    public int OptionalArguments { get => 0; }
-    public bool FinalArgumentWhitespace { get => true; }
-    public Dictionary<string, Func<string?, object>> OptionSpec { get => new Dictionary<string, Func<string?, object>>(); }
-    public bool HasContent { get => false; }
+    public static DirectiveDefinition Make()
+    {
+        return new DirectiveDefinition
+        {
+            RequiredArguments = 1,
+            OptionalArguments = 0,
+            FinalArgumentWhitespace = true,
+            HasContent = false,
+            OptionSpec = new() {
+                { "trim", Validators.Flag },
+                { "ltrim", Validators.Flag },
+                { "rtrim", Validators.Flag },
+            },
+            Run = Run
+        };
+    }
 
-    // option_spec = {"trim": flag, "ltrim": flag, "rtrim": flag}
 
     [GeneratedRegex("""( |\n|^)\.\. """)]
     private static partial Regex COMMENT_PATTERN();
 
 
-    public List<Node> Run(
+    public static List<Node> Run(
+            DirectiveDefinition definition,
             string name,
             List<string> arguments,
             Dictionary<string, object> options,

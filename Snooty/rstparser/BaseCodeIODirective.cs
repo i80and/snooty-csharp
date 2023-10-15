@@ -6,21 +6,23 @@ using tinydocutils;
 /// These directives can either take in a filepath or raw code content. If a filepath
 /// is present, this should be included in the `argument` field of the AST. If raw code
 /// content is present, it should become the value of the child Code node.
-class BaseCodeIODirective : IDirective
+class BaseCodeIODirective
 {
+    public static DirectiveDefinition Make()
+    {
+        return new DirectiveDefinition
+        {
+            RequiredArguments = 0,
+            OptionalArguments = 1,
+            FinalArgumentWhitespace = false,
+            HasContent = true,
+            OptionSpec = new(),
+            Run = Run
+        };
+    }
 
-    public int RequiredArguments { get { return 0; } }
-    public int OptionalArguments { get { return 1; } }
-
-    public bool FinalArgumentWhitespace { get; }
-
-    public Dictionary<string, Func<string?, object>> OptionSpec { get { return new Dictionary<string, Func<string?, object>>(); } }
-
-    public bool HasContent { get { return true; } }
-
-    public BaseCodeIODirective() { }
-
-    public List<Node> Run(
+    public static List<Node> Run(
+        DirectiveDefinition definition,
         string name,
         List<string> arguments,
         Dictionary<string, object> options,

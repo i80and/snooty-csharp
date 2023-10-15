@@ -174,7 +174,7 @@ public sealed partial class Util
 
     public static Dictionary<string, object> ExtractExtensionOptions(
         FieldList field_list,
-        Dictionary<string, Func<string?, object>> options_spec
+        Dictionary<string, Func<string, object>> options_spec
     )
     {
         // Return a dictionary mapping extension option names to converted values.
@@ -202,7 +202,7 @@ public sealed partial class Util
     }
 
 
-    public static List<(string, string?)> ExtractOptions(
+    public static List<(string, string)> ExtractOptions(
         FieldList field_list
     )
     {
@@ -217,7 +217,7 @@ public sealed partial class Util
         //     - `ArgumentException` for invalid option data (missing name,
         //     missing data, bad quotes, etc.).
 
-        var option_list = new List<(string, string?)>();
+        var option_list = new List<(string, string)>();
         string? data;
         foreach (var node in field_list)
         {
@@ -233,7 +233,7 @@ public sealed partial class Util
 
             if (body.Count == 0)
             {
-                data = null;
+                data = "";
             }
             else if (
                 body.Count > 1
@@ -257,8 +257,8 @@ public sealed partial class Util
 
 
     public static Dictionary<string, object> AssembleOptionDict(
-        IEnumerable<(string, string?)> option_list,
-        Dictionary<string, Func<string?, object>> options_spec
+        IEnumerable<(string, string)> option_list,
+        Dictionary<string, Func<string, object>> options_spec
     )
     {
         // Return a mapping of option names to values.
@@ -280,11 +280,7 @@ public sealed partial class Util
         var options = new Dictionary<string, object>();
         foreach (var (name, value) in option_list)
         {
-            var convertor = options_spec[name];  // raises KeyError if unknown
-            if (convertor is null)
-            {
-                throw new KeyNotFoundException(name);  // or if explicitly disabled
-            }
+            var convertor = options_spec[name] ?? throw new KeyNotFoundException(name);  // raises KeyError if unknown
             if (options.ContainsKey(name))
             {
                 throw new ArgumentException($"duplicate option '{name}'");
@@ -344,6 +340,159 @@ public sealed partial class Util
         catch (OverflowException detail)
         {
             throw new ArgumentException($"code too large ({detail})");
+        }
+    }
+
+    public static string FormatValues(IList<string> values)
+    {
+        var arg1 = string.Join(", ", values.SkipLast(1).Select(str => $"\"{str}\""));
+        return $"{arg1}, or \"{values[^0]}\"";
+    }
+}
+
+public class Validators
+{
+    /// <summary>
+    /// Check for a valid flag option (no argument) and return ``None``.
+    /// (Directive option conversion function.)
+    ///
+    /// Raise ``ValueError`` if an argument is found.
+    /// </summary>
+    public static string Flag(string argument)
+    {
+        if (argument.Length > 0 && argument.Trim().Length > 0)
+        {
+            throw new ArgumentException($"no argument is allowed; \"{argument}\" supplied");
+        }
+
+        return argument;
+    }
+
+    public static string Choice(string argument, IList<string> values)
+    {
+        if (argument.Length == 0)
+        {
+            throw new ArgumentException(
+                $"must supply an argument; choose from {Util.FormatValues(values)}"
+            );
+        }
+
+        string value = argument.ToLowerInvariant().Trim();
+
+        if (values.Contains(value))
+        {
+            return value;
+        }
+        else
+        {
+            throw new ArgumentException(
+                $"\"{argument}\" unknown; choose from {Util.FormatValues(values)}"
+            );
+        }
+    }
+
+    /// Return the URI argument with unescaped whitespace removed.
+    /// (Directive option conversion function.)
+    ///
+    /// Raise ``ValueError`` if no argument is found.
+    public static string Uri(string argument)
+    {
+        if (argument.Length == 0)
+        {
+            throw new ArgumentException("argument required but none supplied");
+        }
+        var parts = Util.SplitEscapedWhitespace(Util.Escape2Null(argument));
+        var uri = string.Join(' ', parts.Select(part => string.Concat(Util.Unescape(part).Split())));
+        return uri;
+    }
+
+    /// Check for a nonnegative integer argument; raise ``ValueError`` if not.
+    /// (Directive option conversion function.)
+    public static object NonnegativeInt(string argument)
+    {
+        var value = int.Parse(argument);
+        if (value < 0)
+        {
+            throw new ArgumentException("negative value; must be positive or zero");
+        }
+        return value;
+    }
+
+    /// Check for a valid boolean option return it. If no argument is given,
+    /// treat it as a flag, and return True.
+    public static object Bool(string argument)
+    {
+        if (argument.Trim().Length > 0)
+        {
+            var output = Choice(argument, new string[] { "true", "false" });
+            return output == "true";
+        }
+        return true;
+    }
+
+
+    /// Check for a valid string option and return it. If no argument is given,
+    /// raise ``ArgumentException``.
+    public static string String(string argument)
+    {
+        if (argument.Trim().Length > 0)
+        {
+            return argument;
+        }
+        throw new ArgumentException("Must supply string argument to option");
+    }
+
+    /// Check for a positive argument of one of the units and return a
+    /// normalized string of the form "<value><unit>" (without space in
+    /// between).
+
+    /// To be called from directive option conversion functions.
+    private static string GetMeasure(string argument, IEnumerable<string> units)
+    {
+        var match = new Regex($"^([0-9.]+) *({string.Join('|', units)})$").Match(argument);
+        try
+        {
+            if (!match.Success)
+            {
+                throw new ArgumentException("No measure");
+            }
+
+            float.Parse(match.Groups[1].Value);
+        }
+        catch (ArgumentException)
+        {
+            throw new ArgumentException(
+                "not a positive measure of one of the following units:\n%s" +
+                string.Join(' ', units.Select(i => $"\"{i}\""))
+            );
+        }
+        return match.Groups[1].Value + match.Groups[2].Value;
+    }
+
+    private static readonly string[] LengthUnits = new string[] { "em", "ex", "px", "in", "cm", "mm", "pt", "pc" };
+    private static readonly string[] LengthUnitsWithPercent = LengthUnits.Concat(new string[] { "%" }).ToArray();
+
+
+    /// Return normalized string of a length or percentage unit.
+    /// Add <default> if there is no unit. Raise ValueError if the argument is not
+    /// a positive measure of one of the valid CSS units (or without unit).
+    public static string LengthOrPercentageOrUnitless(string argument)
+    {
+        try
+        {
+            return GetMeasure(argument, LengthUnitsWithPercent);
+        }
+        catch (ArgumentException)
+        {
+            try
+            {
+                return GetMeasure(argument, new string[] { "" });
+            }
+            catch (ArgumentException)
+            {
+                // raise ValueError with list of valid units:
+                return GetMeasure(argument, LengthUnitsWithPercent);
+            }
         }
     }
 }

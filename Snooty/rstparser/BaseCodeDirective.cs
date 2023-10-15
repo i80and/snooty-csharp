@@ -1,20 +1,23 @@
 namespace rstparser;
 using tinydocutils;
 
-public class BaseCodeDirective : IDirective
+public class BaseCodeDirective
 {
-    public int RequiredArguments { get { return 0; } }
-    public int OptionalArguments { get { return 1; } }
+    public static DirectiveDefinition Make()
+    {
+        return new DirectiveDefinition
+        {
+            RequiredArguments = 0,
+            OptionalArguments = 1,
+            FinalArgumentWhitespace = false,
+            HasContent = true,
+            OptionSpec = new(),
+            Run = Run
+        };
+    }
 
-    public bool FinalArgumentWhitespace { get; }
-
-    public Dictionary<string, Func<string?, object>> OptionSpec { get { return new Dictionary<string, Func<string?, object>>(); } }
-
-    public bool HasContent { get { return true; } }
-
-    public BaseCodeDirective() { }
-
-    public List<Node> Run(
+    public static List<Node> Run(
+        DirectiveDefinition definition,
         string name,
         List<string> arguments,
         Dictionary<string, object> options,

@@ -3,20 +3,12 @@ namespace rstparser;
 using System.Text.RegularExpressions;
 using tinydocutils;
 
-public abstract class BaseDocutilsDirective : IDirective
+public record class BaseDocutilsDirective
 {
-    public required DirectiveSpec Spec { get; init; }
-
-    public int RequiredArguments { get; init; }
-    public int OptionalArguments { get; init; }
-
-    public bool FinalArgumentWhitespace { get; init; }
-
-    public Dictionary<string, Func<string?, object>> OptionSpec { get; init; }
-
-    public bool HasContent { get; init; }
+    public required DirectiveSpec Spec;
 
     public List<Node> Run(
+        DirectiveDefinition directiveDefinition,
         string name,
         List<string> arguments,
         Dictionary<string, object> options,
@@ -153,7 +145,7 @@ public abstract class BaseDocutilsDirective : IDirective
     /// An argument spans from the 0th line to the first non-option line; this
     /// is a heuristic that is not part of docutils, since docutils requires
     /// each directive to define its syntax.
-    public void ParseArgument(
+    public static void ParseArgument(
         List<string> arguments,
         Dictionary<string, object> options,
         int lineno,

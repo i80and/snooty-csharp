@@ -125,16 +125,9 @@ public class Inliner
             // lookahead and look-behind expressions for inline markup rules
             string start_string_prefix;
             string end_string_suffix;
-            if (OptionParser.character_level_inline_markup)
-            {
-                start_string_prefix = "(^|(?<!\x00))";
-                end_string_suffix = "";
-            }
-            else
-            {
-                start_string_prefix = $"""(^|(?<=\s|[{PunctuationChars.openers}{PunctuationChars.delimiters}]))""";
-                end_string_suffix = $"""($|(?=\s|[\x00{PunctuationChars.closing_delimiters}{PunctuationChars.delimiters}{PunctuationChars.closers}]))""";
-            }
+
+            start_string_prefix = $"""(^|(?<=\s|[{PunctuationChars.openers}{PunctuationChars.delimiters}]))""";
+            end_string_suffix = $"""($|(?=\s|[\x00{PunctuationChars.closing_delimiters}{PunctuationChars.delimiters}{PunctuationChars.closers}]))""";
 
             var parts = new RegexDefinitionGroup(
                 "initial_inline",
@@ -2736,7 +2729,7 @@ public class BodyState : RSTState
     }
 
     protected (List<Node>, bool) RunDirective(
-        IDirective directive,
+        DirectiveDefinition directive,
         MatchWrapper match,
         string type_name,
         Dictionary<string, object> option_presets
@@ -2801,6 +2794,7 @@ public class BodyState : RSTState
         try
         {
             result = directive.Run(
+                directive,
                 type_name,
                 arguments,
                 options,
@@ -2826,7 +2820,7 @@ public class BodyState : RSTState
     protected (List<string>, Dictionary<string, object>, StringList, int) ParseDirectiveBlock(
         StringList indented,
         int line_offset,
-        IDirective directive,
+        DirectiveDefinition directive,
         Dictionary<string, object> option_presets
     )
     {
@@ -2916,7 +2910,7 @@ public class BodyState : RSTState
 
     protected (Dictionary<string, object>, StringList) ParseDirectiveOptions(
         Dictionary<string, object> option_presets,
-        Dictionary<string, Func<string?, object>> option_spec,
+        Dictionary<string, Func<string, object>> option_spec,
         StringList arg_block
     )
     {
@@ -2950,8 +2944,8 @@ public class BodyState : RSTState
         return (options, arg_block);
     }
 
-    protected string[] ParseDirectiveArguments(
-        IDirective directive, IEnumerable<string> arg_block
+    protected static string[] ParseDirectiveArguments(
+        DirectiveDefinition directive, IEnumerable<string> arg_block
     )
     {
         var arg_text = String.Join('\n', arg_block);
@@ -2979,7 +2973,7 @@ public class BodyState : RSTState
     }
 
     protected Dictionary<string, object> ParseExtensionOptions(
-        Dictionary<string, Func<string?, object>> option_spec,
+        Dictionary<string, Func<string, object>> option_spec,
         StringList datalines
     )
     {
